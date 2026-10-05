@@ -34,6 +34,13 @@ Alternative with no GitHub: app.netlify.com/drop → drag the folder in.
 - After each game, the host marks who **showed up / no-show** on their host page. Remind them: that's your attendance data.
 - **Results:** Supabase → SQL Editor → paste `supabase/pilot_stats.sql` → Run. It gives games posted, number of hosts, % spots filled, % answered within 2h, median response time, % show-up and % returning players.
 
+## 5. Admin page (remove inappropriate games or requests)
+
+1. Open `supabase/admin.sql`, change `CHANGE-ME-to-a-long-password` on the last line to your own long password.
+2. Supabase → SQL Editor → paste the file → Run. (Run it again later to change the password.)
+3. Go to `yourdomain/#/admin` and log in. You can remove or restore any game (with a reason) and any player request. Removed games disappear from the site; hosts can't undo it.
+4. The admin page isn't linked anywhere on the site — bookmark it. Only share the password with your team.
+
 ## Good to know
 
 - There are no notifications: players check their status page, and hosts check their host page. Approved players and hosts contact each other over WhatsApp.

@@ -46,7 +46,7 @@ window.OneShortMock = (function () {
     host_decide({ p_request, p_token, p_decision }, db) {
       const r = db.requests.find((x) => x.id === p_request); const g = r && db.games.find((x) => x.id === r.game_id && x.host_token === p_token);
       if (!g) fail("Invalid host link.");
-      if (r.status === "withdrawn") fail("This request was withdrawn by the player.");
+      if (!["pending", "approved", "declined"].includes(r.status)) fail("This request is no longer active.");
       if (p_decision === "approved" && r.status !== "approved" && filled(db, g.id) >= g.spots_needed) fail("The game is already full.");
       r.status = p_decision; r.decided_at = r.decided_at || new Date().toISOString();
     },
@@ -54,8 +54,22 @@ window.OneShortMock = (function () {
       const r = db.requests.find((x) => x.id === p_request); const g = r && db.games.find((x) => x.id === r.game_id && x.host_token === p_token);
       if (!g || r.status !== "approved") fail("Only approved players can be marked."); r.attended = p_attended;
     },
+    admin_overview({ p_key }, db) {
+      if (p_key !== "admin") fail("Wrong admin password.");
+      return [...db.games].sort((a, b) => new Date(b.starts_at) - new Date(a.starts_at)).map((g) => ({ ...pub(db, g), host_contact: g.host_contact, removed_reason: g.removed_reason || null,
+        requests: db.requests.filter((r) => r.game_id === g.id).map(({ player_token, game_id, ...r }) => r) }));
+    },
+    admin_set_game({ p_key, p_game, p_remove, p_reason }, db) {
+      if (p_key !== "admin") fail("Wrong admin password.");
+      const g = db.games.find((x) => x.id === p_game); if (!g) return;
+      g.status = p_remove ? "removed" : "open"; g.removed_reason = p_remove ? p_reason : null;
+    },
+    admin_set_request({ p_key, p_request, p_remove }, db) {
+      if (p_key !== "admin") fail("Wrong admin password.");
+      const r = db.requests.find((x) => x.id === p_request); if (r) r.status = p_remove ? "removed" : "pending";
+    },
     host_cancel_game({ p_game, p_token }, db) {
-      const g = db.games.find((x) => x.id === p_game && x.host_token === p_token); if (!g) fail("Invalid host link."); g.status = "cancelled";
+      const g = db.games.find((x) => x.id === p_game && x.host_token === p_token && x.status === "open"); if (!g) fail("This game can no longer be changed."); g.status = "cancelled";
     },
   };
 

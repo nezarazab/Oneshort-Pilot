@@ -3,7 +3,8 @@
   "use strict";
 
   // ---------- Backend ----------
-  const cfg = window.ONESHORT_CONFIG || {};
+  const cfg = Object.assign({}, window.ONESHORT_CONFIG);
+  if (cfg.SUPABASE_URL && !/^https?:\/\//.test(cfg.SUPABASE_URL)) cfg.SUPABASE_URL = "https://" + cfg.SUPABASE_URL.trim();
   const live = !!(cfg.SUPABASE_URL && cfg.SUPABASE_ANON_KEY && window.supabase);
   const client = live ? window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY) : null;
   const banner = document.getElementById("demo-banner");
@@ -221,7 +222,7 @@
     if (!g) return errorView("This game doesn't exist (anymore).");
     const left = g.spots_needed - g.spots_filled;
     const closed = g.status !== "open" || isPast(g.starts_at) || left <= 0;
-    const reason = g.status !== "open" ? "This game was cancelled by the host." : isPast(g.starts_at) ? "This game has already started." : "This game is full.";
+    const reason = g.status === "removed" ? "This game was removed." : g.status !== "open" ? "This game was cancelled by the host." : isPast(g.starts_at) ? "This game has already started." : "This game is full.";
     const share = `${base()}#/game/${g.id}`;
 
     setView(`
@@ -274,12 +275,13 @@
       approved: `You're in! Contact ${esc(g.host_name)} to confirm the details.`,
       declined: `${esc(g.host_name)} couldn't fit you in this time. Try another game!`,
       withdrawn: `You withdrew from this game.`,
+      removed: `This request was removed by OneShort.`,
     }[s.status];
     setView(`
       <a class="back" href="#/">← All games</a>
       <div class="page-title"><h1>${isNew ? "Request sent ✅" : "Your request"}</h1></div>
       <div class="card ${s.status === "approved" ? "success" : ""}">
-        <div class="game-top"><span class="sport-chip">${esc(g.sport)}</span><span class="status ${g.status === "cancelled" ? "cancelled" : s.status}">${g.status === "cancelled" ? "Game cancelled" : s.status}</span></div>
+        <div class="game-top"><span class="sport-chip">${esc(g.sport)}</span><span class="status ${g.status !== "open" ? "cancelled" : s.status}">${g.status === "removed" ? "Game removed" : g.status === "cancelled" ? "Game cancelled" : s.status}</span></div>
         <div class="when">${fmtWhen(g.starts_at)}</div>
         <div class="meta"><span>📍 ${esc(g.location)}</span>${g.cost_per_player ? `<span>💶 ${esc(g.cost_per_player)}</span>` : ""}</div>
         <p>${text}</p>
@@ -329,7 +331,7 @@
 
     setView(`
       <a class="back" href="#/">← All games</a>
-      <div class="page-title"><span class="sport-chip">${esc(g.sport)}</span> ${cancelled ? `<span class="status cancelled">Cancelled</span>` : ""}
+      <div class="page-title"><span class="sport-chip">${esc(g.sport)}</span> ${cancelled ? `<span class="status cancelled">${g.status === "removed" ? "Removed by OneShort" : "Cancelled"}</span>` : ""}
         <h1 style="margin-top:12px">${fmtWhen(g.starts_at)}</h1>${gameMeta(g)}</div>
       <div class="card">
         <div class="kpis">
@@ -364,6 +366,82 @@
     });
   }
 
+  // ---------- Admin ----------
+  const ADMIN = "oneshort-admin-key";
+  const getKey = () => { try { return sessionStorage.getItem(ADMIN); } catch { return null; } };
+  const setKey = (k) => { try { k ? sessionStorage.setItem(ADMIN, k) : sessionStorage.removeItem(ADMIN); } catch {} };
+
+  function viewAdminLogin(msg) {
+    setView(`
+      <div class="page-title"><h1>Admin</h1><p class="muted">Remove games or requests that break the rules.</p></div>
+      <form class="card" id="admin-login">
+        ${msg ? `<div class="form-error">${esc(msg)}</div>` : ""}
+        <div class="field"><label for="akey">Admin password</label><input id="akey" type="password" autocomplete="current-password" required /></div>
+        <button class="btn btn-block" type="submit">Log in</button>
+        ${live ? "" : `<p class="hint">Demo mode password: <code>admin</code></p>`}
+      </form>`);
+    document.getElementById("admin-login").addEventListener("submit", (e) => {
+      e.preventDefault(); setKey(document.getElementById("akey").value); viewAdmin();
+    });
+  }
+
+  async function viewAdmin(showAll) {
+    const key = getKey();
+    if (!key) return viewAdminLogin();
+    let games;
+    try { games = await rpc("admin_overview", { p_key: key }); }
+    catch (e) { setKey(null); return viewAdminLogin(e.message); }
+    const upcoming = games.filter((g) => !isPast(g.starts_at));
+    const list = showAll ? games : upcoming;
+
+    setView(`
+      <div class="page-title"><h1>Admin</h1>
+        <div class="btn-row">
+          <button class="btn btn-small ${showAll ? "btn-ghost" : ""}" data-filter="up">Upcoming (${upcoming.length})</button>
+          <button class="btn btn-small ${showAll ? "" : "btn-ghost"}" data-filter="all">All (${games.length})</button>
+          <button class="btn btn-small btn-ghost" id="admin-out">Log out</button>
+        </div></div>
+      ${list.length ? list.map((g) => `
+        <div class="card">
+          <div class="game-top"><span class="sport-chip">${esc(g.sport)}</span><span class="status ${g.status === "open" ? "approved" : "cancelled"}">${g.status === "open" ? "live" : esc(g.status)}</span></div>
+          <div class="when">${fmtWhen(g.starts_at)}</div>
+          ${gameMeta(g)}
+          <div class="hint" style="margin-top:6px">Host contact: ${contactLink(g.host_contact)} · ${g.spots_filled}/${g.spots_needed} filled</div>
+          ${g.notes ? `<div class="req-msg">${esc(g.notes)}</div>` : ""}
+          ${g.removed_reason ? `<div class="warn">Removed: ${esc(g.removed_reason)}</div>` : ""}
+          <div class="btn-row" style="margin-top:10px">
+            ${g.status === "removed"
+              ? `<button class="btn btn-ghost btn-small" data-game="${g.id}" data-remove="false">Restore game</button>`
+              : `<button class="btn btn-danger btn-small" data-game="${g.id}" data-remove="true">Remove game</button>`}
+          </div>
+          ${g.requests.length ? `<details style="margin-top:10px"><summary>${g.requests.length} request${g.requests.length > 1 ? "s" : ""}</summary>
+            ${g.requests.map((r) => `<div class="req">
+              <div class="req-head"><span class="req-name">${esc(r.player_name)} <span class="hint">· ${esc(r.level)} · ${esc(r.player_contact)}</span></span><span class="status ${esc(r.status)}">${esc(r.status)}</span></div>
+              ${r.message ? `<div class="req-msg">${esc(r.message)}</div>` : ""}
+              ${r.status === "removed"
+                ? `<button class="btn btn-ghost btn-small" data-req="${r.id}" data-remove="false">Restore request</button>`
+                : `<button class="btn btn-danger btn-small" data-req="${r.id}" data-remove="true">Remove request</button>`}
+            </div>`).join("")}</details>` : ""}
+        </div>`).join("") : `<div class="card empty"><p class="muted">No games here.</p></div>`}`);
+
+    app.querySelector("[data-filter=up]").addEventListener("click", () => viewAdmin(false));
+    app.querySelector("[data-filter=all]").addEventListener("click", () => viewAdmin(true));
+    document.getElementById("admin-out").addEventListener("click", () => { setKey(null); location.hash = "#/"; });
+    app.querySelectorAll("[data-game]").forEach((b) => b.addEventListener("click", async () => {
+      const remove = b.dataset.remove === "true";
+      let reason = null;
+      if (remove) { reason = prompt("Reason for removing (only visible to admins):", "Inappropriate content"); if (reason === null) return; }
+      try { await rpc("admin_set_game", { p_key: key, p_game: b.dataset.game, p_remove: remove, p_reason: reason }); toast(remove ? "Game removed" : "Game restored"); viewAdmin(showAll); }
+      catch (e) { toast(e.message); }
+    }));
+    app.querySelectorAll("[data-req]").forEach((b) => b.addEventListener("click", async () => {
+      const remove = b.dataset.remove === "true";
+      if (remove && !confirm("Remove this request? The player will see it was removed.")) return;
+      try { await rpc("admin_set_request", { p_key: key, p_request: b.dataset.req, p_remove: remove }); toast(remove ? "Request removed" : "Request restored"); viewAdmin(showAll); }
+      catch (e) { toast(e.message); }
+    }));
+  }
+
   // ---------- Router ----------
   function route() {
     const [path, query] = (location.hash.slice(1) || "/").split("?");
@@ -371,6 +449,7 @@
     if (parts[0] === "host") return viewHost();
     if (parts[0] === "game" && parts[1]) return viewGame(parts[1]);
     if (parts[0] === "request" && parts[2]) return viewRequest(parts[1], parts[2], /new=1/.test(query || ""));
+    if (parts[0] === "admin") { loading(); return viewAdmin(false); }
     if (parts[0] === "manage" && parts[2]) { loading(); return viewManage(parts[1], parts[2]); }
     return viewHome();
   }

@@ -116,7 +116,7 @@ nav { display: flex; align-items: center; gap: 14px; }
 .status { display: inline-block; font-size: .8rem; font-weight: 700; padding: 3px 10px; border-radius: 999px; text-transform: capitalize; }
 .status.pending { background: var(--amber-bg); color: var(--amber); }
 .status.approved { background: var(--ok-bg); color: var(--green); }
-.status.declined, .status.withdrawn, .status.cancelled { background: var(--red-bg); color: var(--red); }
+.status.declined, .status.withdrawn, .status.cancelled, .status.removed { background: var(--red-bg); color: var(--red); }
 
 /* Forms */
 form .field { margin-bottom: 14px; }
@@ -174,3 +174,5 @@ textarea { min-height: 80px; resize: vertical; }
   opacity: 0; visibility: hidden;
 }
 .toast.show { transform: translate(-50%, 0); opacity: 1; visibility: visible; }
+
+details summary { cursor: pointer; font-weight: 600; color: var(--green); }
