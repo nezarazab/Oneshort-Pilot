@@ -6,7 +6,8 @@
   const cfg = window.ONESHORT_CONFIG || {};
   const live = !!(cfg.SUPABASE_URL && cfg.SUPABASE_ANON_KEY && window.supabase);
   const client = live ? window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY) : null;
-  if (!live) document.getElementById("demo-banner").hidden = false;
+  const banner = document.getElementById("demo-banner");
+  if (!live && banner) banner.hidden = false;
 
   async function rpc(name, params) {
     if (!live) return window.OneShortMock.rpc(name, params);
