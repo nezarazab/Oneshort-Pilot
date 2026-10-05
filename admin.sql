@@ -102,5 +102,5 @@ end $$;
 
 -- ===== SET YOUR ADMIN PASSWORD HERE (run again any time to change it) =====
 insert into public.admin_settings (id, password_hash)
-values (1, extensions.crypt('CHANGE-ME-to-a-long-password', extensions.gen_salt('bf')))
+values (1, extensions.crypt('Nezaralaa123', extensions.gen_salt('bf')))
 on conflict (id) do update set password_hash = excluded.password_hash;
