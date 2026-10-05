@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OneShort – Short a player? Not anymore.</title>
+  <meta name="description" content="Find players and games near you in Eindhoven. Host a game, players request a spot, you play." />
+  <meta property="og:title" content="OneShort – Short a player? Not anymore." />
+  <meta property="og:description" content="Find players and games near you in Eindhoven. Pilot by Fontys students." />
+  <meta name="theme-color" content="#0E1A12" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230E1A12'/%3E%3Ccircle cx='32' cy='32' r='16' fill='none' stroke='%23C6F432' stroke-width='6'/%3E%3Ccircle cx='32' cy='32' r='5' fill='%23C6F432'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;800;900&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <a href="#/" class="logo" aria-label="OneShort home">
+      <span class="logo-mark" aria-hidden="true"></span>OneShort
+    </a>
+    <nav>
+      <a href="#/" class="nav-link">Games</a>
+      <a href="#/host" class="btn btn-small">Host a game</a>
+    </nav>
+  </header>
+
+  <div id="demo-banner" class="demo-banner" hidden>
+    Demo mode: data is only saved in this browser. Add your Supabase keys in <code>config.js</code> to go live.
+  </div>
+
+  <main id="app" tabindex="-1"></main>
+
+  <footer class="footer">
+    <p><strong>OneShort pilot</strong> · Made by Fontys students in Eindhoven.</p>
+    <p class="muted">Your contact details are only shared with the host of the game you request (and the host's with you once you're approved). Pilot data is deleted when the pilot ends.</p>
+  </footer>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="mock.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
