@@ -112,6 +112,33 @@
     }).catch(() => { const el = document.getElementById(elId); if (el) el.outerHTML = `<p class="hint">Map couldn't load. Use the button below.</p>`; });
   }
 
+  // Home page: all pinned games on one map
+  function renderHomeMap(games) {
+    const wrap = document.getElementById("home-map-wrap");
+    const pinned = games.filter(hasPin);
+    if (!wrap || !pinned.length) return;
+    wrap.innerHTML = `<div class="card map-card"><div id="home-map" class="map map-home"></div>
+      <p class="hint" style="margin:8px 4px 0">${pinned.length} game${pinned.length > 1 ? "s" : ""} on the map${pinned.length < games.length ? ` · ${games.length - pinned.length} without a pin (see list below)` : ""}. Tap a pin for details.</p></div>`;
+    loadLeaflet().then((L) => {
+      const el = document.getElementById("home-map");
+      if (!el) return;
+      const map = makeMap(L, el, EINDHOVEN, 12);
+      const pts = [];
+      pinned.forEach((g) => {
+        const left = Math.max(0, g.spots_needed - g.spots_filled);
+        const html = `<div class="pop"><span class="sport-chip">${esc(g.sport)}</span>
+          <div class="pop-when">${fmtWhen(g.starts_at)}</div>
+          <div class="pop-loc">📍 ${esc(g.location)}</div>
+          <div class="pop-spots">${left ? `${left} spot${left > 1 ? "s" : ""} left` : "Full"} · ${esc(g.level)}</div>
+          <a class="btn btn-small pop-btn" href="#/game/${g.id}">View game →</a></div>`;
+        L.marker([g.lat, g.lng], { icon: pinIcon(L), title: `${g.sport} · ${fmtWhen(g.starts_at)}` }).addTo(map).bindPopup(html, { maxWidth: 240 });
+        pts.push([g.lat, g.lng]);
+      });
+      if (pts.length > 1) map.fitBounds(L.latLngBounds(pts), { padding: [36, 36], maxZoom: 15 });
+      else map.setView(pts[0], 15);
+    }).catch(() => { wrap.innerHTML = ""; });
+  }
+
   // "My games / requests" remembered in this browser (convenience only)
   const MINE = "oneshort-mine";
   const getMine = () => { try { return JSON.parse(localStorage.getItem(MINE)) || { games: [], requests: [] }; } catch { return { games: [], requests: [] }; } };
@@ -160,6 +187,7 @@
       </div>
       ${mineHtml}
       <div class="section-head" id="games"><h2>Open games</h2><a href="#/host">+ Host</a></div>
+      <div id="home-map-wrap"></div>
       <div id="game-list"><div class="loading">Loading games…</div></div>
     `);
 
@@ -169,7 +197,7 @@
       if (!list) return;
       list.innerHTML = games.length ? games.map((g) => `
         <a class="card game-card" href="#/game/${g.id}">
-          <div class="game-top"><span class="sport-chip">${esc(g.sport)}</span>${isPast(g.starts_at) ? `<span class="status pending">Started</span>` : ""}</div>
+          <div class="game-top"><span class="sport-chip">${esc(g.sport)}</span>${isPast(g.starts_at) ? `<span class="status pending">Started</span>` : hasPin(g) ? `<span class="hint">🗺️ On map</span>` : ""}</div>
           <div class="when">${fmtWhen(g.starts_at)}</div>
           ${gameMeta(g, false)}
           ${spotsBlock(g)}
@@ -177,6 +205,7 @@
         <div class="card empty"><div class="big">⚽</div><h3>No open games yet</h3>
           <p class="muted">Be the first. Post a game and share it in your group chat.</p>
           <a class="btn" href="#/host">Host a game</a></div>`;
+      renderHomeMap(games);
     } catch (e) {
       const list = document.getElementById("game-list");
       if (list) list.innerHTML = `<div class="form-error">Could not load games: ${esc(e.message)}</div>`;
