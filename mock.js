@@ -7,7 +7,7 @@ window.OneShortMock = (function () {
   const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now());
   const fail = (m) => { throw new Error(m); };
   const filled = (db, g) => db.requests.filter((r) => r.game_id === g && r.status === "approved").length;
-  const pub = (db, g) => ({ id: g.id, sport: g.sport, location: g.location, starts_at: g.starts_at, spots_needed: g.spots_needed, level: g.level, host_name: g.host_name, cost_per_player: g.cost_per_player, notes: g.notes, spots_filled: filled(db, g.id), status: g.status });
+  const pub = (db, g) => ({ id: g.id, sport: g.sport, location: g.location, starts_at: g.starts_at, spots_needed: g.spots_needed, level: g.level, host_name: g.host_name, cost_per_player: g.cost_per_player, notes: g.notes, spots_filled: filled(db, g.id), status: g.status, lat: g.lat ?? null, lng: g.lng ?? null });
 
   const fns = {
     list_games(_, db) {
@@ -18,7 +18,7 @@ window.OneShortMock = (function () {
     get_game({ p_id }, db) { const g = db.games.find((x) => x.id === p_id); return g ? [pub(db, g)] : []; },
     create_game(p, db) {
       if (new Date(p.p_starts_at) < Date.now()) fail("The game time must be in the future.");
-      const g = { id: uid(), host_token: uid(), sport: p.p_sport, location: p.p_location, starts_at: p.p_starts_at, spots_needed: p.p_spots, level: p.p_level, host_name: p.p_host_name, host_contact: p.p_host_contact, cost_per_player: p.p_cost || null, notes: p.p_notes || null, status: "open", created_at: new Date().toISOString() };
+      const g = { id: uid(), host_token: uid(), sport: p.p_sport, location: p.p_location, starts_at: p.p_starts_at, spots_needed: p.p_spots, level: p.p_level, host_name: p.p_host_name, host_contact: p.p_host_contact, cost_per_player: p.p_cost || null, notes: p.p_notes || null, lat: p.p_lat ?? null, lng: p.p_lng ?? null, status: "open", created_at: new Date().toISOString() };
       db.games.push(g); return [{ id: g.id, host_token: g.host_token }];
     },
     request_spot(p, db) {
@@ -33,7 +33,7 @@ window.OneShortMock = (function () {
     request_status({ p_id, p_token }, db) {
       const r = db.requests.find((x) => x.id === p_id && x.player_token === p_token); if (!r) fail("Request not found.");
       const g = db.games.find((x) => x.id === r.game_id);
-      return { status: r.status, player_name: r.player_name, created_at: r.created_at, decided_at: r.decided_at, game: { id: g.id, sport: g.sport, location: g.location, starts_at: g.starts_at, host_name: g.host_name, status: g.status, cost_per_player: g.cost_per_player }, host_contact: r.status === "approved" ? g.host_contact : null };
+      return { status: r.status, player_name: r.player_name, created_at: r.created_at, decided_at: r.decided_at, game: { id: g.id, sport: g.sport, location: g.location, starts_at: g.starts_at, host_name: g.host_name, status: g.status, cost_per_player: g.cost_per_player, lat: g.lat ?? null, lng: g.lng ?? null }, host_contact: r.status === "approved" ? g.host_contact : null };
     },
     withdraw_request({ p_id, p_token }, db) {
       const r = db.requests.find((x) => x.id === p_id && x.player_token === p_token && ["pending", "approved"].includes(x.status));

@@ -60,6 +60,58 @@
     catch { prompt("Copy this link:", text); }
   }
 
+  // ---------- Maps (OpenStreetMap via Leaflet, loaded only when needed) ----------
+  const EINDHOVEN = [51.4416, 5.4697];
+  let leafletPromise = null;
+  function loadLeaflet() {
+    if (window.L) return Promise.resolve(window.L);
+    if (!leafletPromise) leafletPromise = new Promise((resolve, reject) => {
+      const css = document.createElement("link");
+      css.rel = "stylesheet"; css.href = "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css";
+      document.head.appendChild(css);
+      const js = document.createElement("script");
+      js.src = "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js";
+      js.onload = () => resolve(window.L);
+      js.onerror = () => { leafletPromise = null; reject(new Error("Map could not load")); };
+      document.head.appendChild(js);
+    });
+    return leafletPromise;
+  }
+  function makeMap(L, el, center, zoom) {
+    const map = L.map(el, { scrollWheelZoom: false, tap: false }).setView(center, zoom);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>',
+    }).addTo(map);
+    return map;
+  }
+  const pinIcon = (L) => L.divIcon({ className: "os-pin", html: "<span></span>", iconSize: [30, 40], iconAnchor: [15, 40] });
+  const hasPin = (g) => g && typeof g.lat === "number" && typeof g.lng === "number";
+  const gmapsUrl = (g) => `https://www.google.com/maps/search/?api=1&query=${g.lat},${g.lng}`;
+  async function geoSearch(q) {
+    const u = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=nl&viewbox=5.25,51.6,5.7,51.3&q=${encodeURIComponent(q)}`;
+    const r = await fetch(u, { headers: { "Accept-Language": "en" } });
+    const d = await r.json();
+    return d && d[0] ? { lat: +d[0].lat, lng: +d[0].lon, name: d[0].display_name } : null;
+  }
+  async function geoName(lat, lng) {
+    try {
+      const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=17&lat=${lat}&lon=${lng}`, { headers: { "Accept-Language": "en" } });
+      const d = await r.json();
+      const a = d.address || {};
+      const parts = [d.name || a.leisure || a.park || a.road, a.suburb || a.neighbourhood, a.city || a.town || a.village].filter(Boolean);
+      return [...new Set(parts)].slice(0, 2).join(", ") || null;
+    } catch { return null; }
+  }
+  // Read-only map with one pin (game page)
+  function showGameMap(elId, g) {
+    loadLeaflet().then((L) => {
+      const el = document.getElementById(elId);
+      if (!el) return;
+      const map = makeMap(L, el, [g.lat, g.lng], 16);
+      L.marker([g.lat, g.lng], { icon: pinIcon(L), keyboard: false }).addTo(map);
+    }).catch(() => { const el = document.getElementById(elId); if (el) el.outerHTML = `<p class="hint">Map couldn't load. Use the button below.</p>`; });
+  }
+
   // "My games / requests" remembered in this browser (convenience only)
   const MINE = "oneshort-mine";
   const getMine = () => { try { return JSON.parse(localStorage.getItem(MINE)) || { games: [], requests: [] }; } catch { return { games: [], requests: [] }; } };
@@ -75,8 +127,9 @@
     return `<div class="spots"><div class="spots-bar"><i style="width:${pct}%"></i></div>
       <div class="spots-text ${left ? "" : "full"}">${left ? `${left} of ${g.spots_needed} spot${g.spots_needed > 1 ? "s" : ""} left` : "Full"}</div></div>`;
   }
-  function gameMeta(g) {
-    return `<div class="meta"><span>📍 ${esc(g.location)}</span><span>🎯 ${esc(g.level)}</span>${g.cost_per_player ? `<span>💶 ${esc(g.cost_per_player)}</span>` : ""}<span>👤 ${esc(g.host_name)}</span></div>`;
+  function gameMeta(g, linkLocation = true) {
+    const loc = hasPin(g) && linkLocation ? `<a href="${gmapsUrl(g)}" target="_blank" rel="noopener">${esc(g.location)}</a>` : esc(g.location);
+    return `<div class="meta"><span>📍 ${loc}</span><span>🎯 ${esc(g.level)}</span>${g.cost_per_player ? `<span>💶 ${esc(g.cost_per_player)}</span>` : ""}<span>👤 ${esc(g.host_name)}</span></div>`;
   }
 
   // ---------- Views ----------
@@ -118,7 +171,7 @@
         <a class="card game-card" href="#/game/${g.id}">
           <div class="game-top"><span class="sport-chip">${esc(g.sport)}</span>${isPast(g.starts_at) ? `<span class="status pending">Started</span>` : ""}</div>
           <div class="when">${fmtWhen(g.starts_at)}</div>
-          ${gameMeta(g)}
+          ${gameMeta(g, false)}
           ${spotsBlock(g)}
         </a>`).join("") : `
         <div class="card empty"><div class="big">⚽</div><h3>No open games yet</h3>
@@ -148,7 +201,14 @@
           <div class="field"><label for="when">Date & time</label><input id="when" name="when" type="datetime-local" required value="${defaultWhen}" /></div>
           <div class="field"><label for="spots">Players needed</label><input id="spots" name="spots" type="number" min="1" max="30" value="2" required /></div>
         </div>
-        <div class="field"><label for="location">Location</label><input id="location" name="location" required maxlength="120" placeholder="e.g. Genneper Parken, field 3" /></div>
+        <div class="field"><label for="location">Location name</label><input id="location" name="location" required maxlength="120" placeholder="e.g. Genneper Parken, field 3" /></div>
+        <div class="field" id="map-field">
+          <label for="map-q">Pin the exact spot <span class="hint">(recommended)</span></label>
+          <div class="map-search"><input id="map-q" placeholder="Search a place, e.g. Genneper Parken" autocomplete="off" /><button type="button" class="btn btn-dark btn-small" id="map-go">Search</button></div>
+          <div id="pick-map" class="map"></div>
+          <div class="map-bar"><span id="pin-status" class="hint">Tap the map to drop a pin, then drag it to the exact spot.</span>
+            <span class="map-actions"><button type="button" class="chip" id="map-me">📍 My location</button><button type="button" class="chip" id="map-clear" hidden>Remove pin</button></span></div>
+        </div>
         <div class="grid-2">
           <div class="field"><label for="level">Level</label>
             <select id="level" name="level"><option>Any</option><option>Beginner</option><option>Intermediate</option><option>Advanced</option></select></div>
@@ -164,6 +224,62 @@
       </form>`);
 
     app.querySelectorAll("[data-sport]").forEach((b) => b.addEventListener("click", () => { document.getElementById("sport").value = b.dataset.sport; }));
+
+    // Map picker
+    let pin = null, autoName = "";
+    const locInput = document.getElementById("location");
+    loadLeaflet().then((L) => {
+      const el = document.getElementById("pick-map");
+      if (!el) return;
+      const map = makeMap(L, el, EINDHOVEN, 13);
+      const status = document.getElementById("pin-status"), clearBtn = document.getElementById("map-clear");
+      let marker = null;
+      const place = async (latlng, fillName = true) => {
+        pin = { lat: +latlng.lat.toFixed(6), lng: +latlng.lng.toFixed(6) };
+        if (!marker) {
+          marker = L.marker(latlng, { draggable: true, icon: pinIcon(L), autoPan: true }).addTo(map);
+          marker.on("dragend", () => place(marker.getLatLng()));
+        } else marker.setLatLng(latlng);
+        status.textContent = "Pin set ✓ Drag it to adjust.";
+        clearBtn.hidden = false;
+        if (fillName && (!locInput.value.trim() || locInput.value === autoName)) {
+          const n = await geoName(pin.lat, pin.lng);
+          if (n && (!locInput.value.trim() || locInput.value === autoName)) { locInput.value = n; autoName = n; }
+        }
+      };
+      map.on("click", (e) => place(e.latlng));
+      clearBtn.addEventListener("click", () => {
+        if (marker) { map.removeLayer(marker); marker = null; }
+        pin = null; clearBtn.hidden = true;
+        status.textContent = "Tap the map to drop a pin, then drag it to the exact spot.";
+      });
+      const doSearch = async () => {
+        const q = document.getElementById("map-q").value.trim();
+        if (!q) return;
+        status.textContent = "Searching…";
+        try {
+          const hit = await geoSearch(q);
+          if (!hit) { status.textContent = "No place found. Try another name, or tap the map."; return; }
+          map.setView([hit.lat, hit.lng], 17);
+          await place({ lat: hit.lat, lng: hit.lng }, false);
+          if (!locInput.value.trim() || locInput.value === autoName) { locInput.value = q; autoName = q; }
+        } catch { status.textContent = "Search failed. Tap the map instead."; }
+      };
+      document.getElementById("map-go").addEventListener("click", doSearch);
+      document.getElementById("map-q").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); doSearch(); } });
+      document.getElementById("map-me").addEventListener("click", () => {
+        if (!navigator.geolocation) return toast("Location not available");
+        status.textContent = "Finding your location…";
+        navigator.geolocation.getCurrentPosition(
+          (p) => { const ll = { lat: p.coords.latitude, lng: p.coords.longitude }; map.setView([ll.lat, ll.lng], 17); place(ll); },
+          () => { status.textContent = "Couldn't get your location. Tap the map instead."; },
+          { enableHighAccuracy: true, timeout: 10000 });
+      });
+    }).catch(() => {
+      const f = document.getElementById("map-field");
+      if (f) f.innerHTML = `<p class="hint">The map couldn't load. Just describe the location in the field above.</p>`;
+    });
+
     document.getElementById("host-form").addEventListener("submit", async (ev) => {
       ev.preventDefault();
       const f = ev.target, btn = f.querySelector("[type=submit]"), errBox = document.getElementById("form-error");
@@ -179,10 +295,11 @@
         const res = await rpc("create_game", {
           p_sport: v("sport"), p_location: v("location"), p_starts_at: when.toISOString(), p_spots: spots,
           p_level: v("level"), p_host_name: v("hname"), p_host_contact: v("hcontact"), p_cost: v("cost") || null, p_notes: v("notes") || null,
+          p_lat: pin ? pin.lat : null, p_lng: pin ? pin.lng : null,
         });
         const row = Array.isArray(res) ? res[0] : res;
         addMine("games", { id: row.id, token: row.host_token, sport: v("sport"), starts_at: when.toISOString() });
-        viewHostCreated(row.id, row.host_token, { sport: v("sport"), starts_at: when.toISOString(), location: v("location"), spots });
+        viewHostCreated(row.id, row.host_token, { sport: v("sport"), starts_at: when.toISOString(), location: v("location"), spots, lat: pin ? pin.lat : null, lng: pin ? pin.lng : null });
       } catch (e) {
         errBox.innerHTML = `<div class="form-error">${esc(e.message)}</div>`;
         btn.disabled = false; btn.textContent = "Post game";
@@ -191,7 +308,7 @@
   }
 
   function shareText(g, id) {
-    return `${g.sport} · ${fmtWhen(g.starts_at)} · ${g.location}\nNeed ${g.spots} player${g.spots > 1 ? "s" : ""}! Request a spot on OneShort: ${base()}#/game/${id}`;
+    return `${g.sport} · ${fmtWhen(g.starts_at)} · ${g.location}\nNeed ${g.spots} player${g.spots > 1 ? "s" : ""}! Request a spot on OneShort: ${base()}#/game/${id}${hasPin(g) ? `\n📍 ${gmapsUrl(g)}` : ""}`;
   }
 
   function viewHostCreated(id, token, g) {
@@ -228,6 +345,8 @@
     setView(`
       <a class="back" href="#/">← All games</a>
       <div class="page-title"><span class="sport-chip">${esc(g.sport)}</span><h1 style="margin-top:12px">${fmtWhen(g.starts_at)}</h1>${gameMeta(g)}</div>
+      ${hasPin(g) ? `<div class="card map-card"><div id="game-map" class="map map-small"></div>
+        <div class="btn-row" style="margin-top:12px"><a class="btn btn-dark btn-small" href="${gmapsUrl(g)}" target="_blank" rel="noopener">Open in Google Maps</a></div></div>` : ""}
       <div class="card">${spotsBlock(g)}${g.notes ? `<p class="req-msg">${esc(g.notes)}</p>` : ""}
         <div class="btn-row" style="margin-top:12px"><a class="btn btn-wa btn-small" target="_blank" rel="noopener" href="${waShare(`${g.sport} · ${fmtWhen(g.starts_at)} · ${g.location}\nRequest a spot: ${share}`)}">Share</a></div></div>
       ${closed ? `<div class="card empty"><h3>${reason}</h3><a class="btn" href="#/">See other games</a></div>` : `
@@ -245,6 +364,7 @@
         <button class="btn btn-block" type="submit">Request spot</button>
       </form>`}`);
 
+    if (hasPin(g)) showGameMap("game-map", g);
     const form = document.getElementById("req-form");
     if (!form) return;
     form.addEventListener("submit", async (ev) => {
@@ -283,7 +403,7 @@
       <div class="card ${s.status === "approved" ? "success" : ""}">
         <div class="game-top"><span class="sport-chip">${esc(g.sport)}</span><span class="status ${g.status !== "open" ? "cancelled" : s.status}">${g.status === "removed" ? "Game removed" : g.status === "cancelled" ? "Game cancelled" : s.status}</span></div>
         <div class="when">${fmtWhen(g.starts_at)}</div>
-        <div class="meta"><span>📍 ${esc(g.location)}</span>${g.cost_per_player ? `<span>💶 ${esc(g.cost_per_player)}</span>` : ""}</div>
+        <div class="meta"><span>📍 ${hasPin(g) ? `<a href="${gmapsUrl(g)}" target="_blank" rel="noopener">${esc(g.location)}</a>` : esc(g.location)}</span>${g.cost_per_player ? `<span>💶 ${esc(g.cost_per_player)}</span>` : ""}</div>
         <p>${text}</p>
         ${s.status === "approved" && s.host_contact ? `<p><b>Host contact:</b> ${contactLink(s.host_contact)}</p>` : ""}
       </div>

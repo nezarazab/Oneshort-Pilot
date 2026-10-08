@@ -41,6 +41,13 @@ Alternative with no GitHub: app.netlify.com/drop → drag the folder in.
 3. Go to `yourdomain/#/admin` and log in. You can remove or restore any game (with a reason) and any player request. Removed games disappear from the site; hosts can't undo it.
 4. The admin page isn't linked anywhere on the site — bookmark it. Only share the password with your team.
 
+## 6. Map pin (OpenStreetMap)
+
+1. Supabase → SQL Editor → paste `supabase/map.sql` → Run (after schema.sql and admin.sql). Existing games are kept; they just have no pin.
+2. Hosts can search a place, tap the map or use "My location", then drag the pin to the exact spot. The location name is filled in automatically if empty.
+3. Players see the map on the game page, plus an "Open in Google Maps" button for directions. The WhatsApp share text also includes the Google Maps link.
+4. Free: map tiles from OpenStreetMap and place search from Nominatim, no key or card needed. Fine for a pilot; for a big launch, switch to a paid tile/search provider.
+
 ## Good to know
 
 - There are no notifications: players check their status page, and hosts check their host page. Approved players and hosts contact each other over WhatsApp.
