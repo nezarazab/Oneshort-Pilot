@@ -72,9 +72,9 @@
     if (!nav) return;
     if (me) {
       const initial = esc(((me.profile && me.profile.name) || me.user.email || "?").trim().charAt(0).toUpperCase());
-      nav.innerHTML = `<a href="#/" class="nav-link hide-sm">Games</a><a href="#/host" class="btn btn-small">Host a game</a><a href="#/me" class="avatar" title="My account" aria-label="My account">${initial}</a>`;
+      nav.innerHTML = `<a href="#/" class="nav-link hide-sm">Find games</a><a href="#/host" class="btn btn-small btn-ghost">Host a game</a><a href="#/me" class="avatar" title="My account" aria-label="My account">${initial}</a>`;
     } else {
-      nav.innerHTML = `<a href="#/" class="nav-link hide-sm">Games</a><a href="#/login" class="nav-link">Log in</a><a href="#/signup" class="btn btn-small">Sign up</a>`;
+      nav.innerHTML = `<a href="#/" class="nav-link hide-sm">Find games</a><a href="#/login" class="nav-link">Log in</a><a href="#/signup" class="btn btn-small">Sign up</a>`;
     }
   }
   // Send to login (and come back afterwards). Returns true if the user may continue.
@@ -102,6 +102,10 @@
     return `${day} · ${time}`;
   };
   const isPast = (iso) => new Date(iso) < new Date();
+  const dateTile = (iso) => {
+    const [dow, day, mon] = fmtWhen(iso).split(" · ")[0].replace(",", "").split(" ");
+    return `<div class="date-tile"><span>${dow}</span><b>${day}</b><span>${mon}</span></div>`;
+  };
   function waNumber(contact) {
     if (!contact || contact.includes("@")) return null;
     let n = contact.replace(/[^\d+]/g, "");
@@ -196,7 +200,7 @@
         const left = Math.max(0, g.spots_needed - g.spots_filled);
         const html = `<div class="pop"><span class="sport-chip">${esc(g.sport)}</span>
           <div class="pop-when">${fmtWhen(g.starts_at)}</div>
-          <div class="pop-loc">📍 ${esc(g.location)}</div>
+          <div class="pop-loc">${esc(g.location)}</div>
           <div class="pop-spots">${left ? `${left} spot${left > 1 ? "s" : ""} left` : "Full"} · ${esc(g.level)}</div>
           <a class="btn btn-small pop-btn" href="#/game/${g.id}">View game →</a></div>`;
         L.marker([g.lat, g.lng], { icon: pinIcon(L), title: `${g.sport} · ${fmtWhen(g.starts_at)}` }).addTo(map).bindPopup(html, { maxWidth: 240 });
@@ -212,7 +216,7 @@
   const getMine = () => { try { return JSON.parse(localStorage.getItem(MINE)) || { games: [], requests: [] }; } catch { return { games: [], requests: [] }; } };
   const addMine = (kind, item) => { try { const m = getMine(); m[kind] = [item, ...m[kind].filter((x) => x.id !== item.id)].slice(0, 20); localStorage.setItem(MINE, JSON.stringify(m)); } catch {} };
 
-  const setView = (html) => { app.innerHTML = html; window.scrollTo(0, 0); };
+  const setView = (html) => { app.className = ""; app.innerHTML = html; window.scrollTo(0, 0); };
   const loading = () => setView(`<div class="loading">Loading…</div>`);
   const errorView = (msg) => setView(`<div class="page-title"><h1>Oops</h1></div><div class="card"><p>${esc(msg)}</p><a class="btn" href="#/">Back to games</a></div>`);
 
@@ -224,7 +228,7 @@
   }
   function gameMeta(g, linkLocation = true) {
     const loc = hasPin(g) && linkLocation ? `<a href="${gmapsUrl(g)}" target="_blank" rel="noopener">${esc(g.location)}</a>` : esc(g.location);
-    return `<div class="meta"><span>📍 ${loc}</span><span>🎯 ${esc(g.level)}</span>${g.cost_per_player ? `<span>💶 ${esc(g.cost_per_player)}</span>` : ""}<span>👤 ${esc(g.host_name)}</span></div>`;
+    return `<div class="meta"><span>${loc}</span><span>${esc(g.level)}</span>${g.cost_per_player ? `<span>Cost: ${esc(g.cost_per_player)}</span>` : ""}<span>Hosted by ${esc(g.host_name)}</span></div>`;
   }
 
   // ---------- Views ----------
@@ -248,38 +252,81 @@
 
     setView(`
       <section class="hero">
-        <span class="pill-badge">● Pilot · Eindhoven</span>
-        <h1>Short a player?<br><em>Not anymore.</em></h1>
-        <p>Post your game, players nearby request a spot, you pick who joins. Any sport.</p>
-        ${me ? "" : `<p class="hero-small">New here? <a href="#/signup">Create a free account</a> in 30 seconds.</p>`}
-        <div class="btn-row">
-          <a class="btn" href="#games" data-scroll="games">Find a game</a>
-          <a class="btn btn-ghost" href="#/host">Host a game</a>
+        <div class="hero-copy">
+          <span class="pill-badge"><i></i>Live in Eindhoven · Pilot</span>
+          <h1>Find a pickup game <em>near you.</em></h1>
+          <p>Games around Eindhoven that are a player short. Request a spot, get approved by the host, and play. Any sport, any level.</p>
+          <div class="btn-row">
+            <a class="btn btn-lg" href="#games" data-scroll="games"><span id="hero-find">Find a game</span> <span class="arr">→</span></a>
+            <a class="hero-link" href="#/host">Host a game</a>
+          </div>
+          <ul class="hero-points"><li>Free to use</li><li>Contact details shared only after approval</li></ul>
         </div>
+        <div class="hero-art" id="hero-art"></div>
       </section>
-      <div class="steps">
-        <div class="step"><b>1</b><span>Host posts a game and how many players they need</span></div>
-        <div class="step"><b>2</b><span>Players request a spot</span></div>
-        <div class="step"><b>3</b><span>Host approves, you get each other's contact. Play!</span></div>
-      </div>
+      <div class="stats" id="stats" hidden></div>
       ${mineHtml}
-      <div class="section-head" id="games"><h2>Open games</h2><a href="#/host">+ Host</a></div>
-      <div id="home-map-wrap"></div>
-      <div id="game-list"><div class="loading">Loading games…</div></div>
+      <div class="section-head" id="games"><div><span class="eyebrow">Find your game</span><h2>Open games</h2></div></div>
+      <div class="browse">
+        <div id="home-map-wrap"></div>
+        <div id="game-list"><div class="loading">Loading games…</div></div>
+      </div>
+      <div class="section-head"><div><span class="eyebrow">Three steps</span><h2>How it works</h2></div></div>
+      <div class="steps">
+        <div class="step"><b>01</b><div><strong>Pick a game</strong><span>Browse open games on the map or in the list.</span></div></div>
+        <div class="step"><b>02</b><div><strong>Request a spot</strong><span>The host reviews your request and approves you.</span></div></div>
+        <div class="step"><b>03</b><div><strong>Play</strong><span>You get each other's WhatsApp or email to sort out the details.</span></div></div>
+      </div>
+      <div class="perks">
+        <div class="perk"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v6c0 4.400-3 7.600-7 9-4-1.400-7-4.600-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg><div><strong>Your number stays private</strong><span>Contact details are only swapped once the host approves you.</span></div></div>
+        <div class="perk"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.500"/><path d="M2.500 20c.600-3.400 3.200-5.500 6.500-5.500s5.900 2.100 6.500 5.500"/><path d="M16 4.800a3.500 3.500 0 010 6.400M18 14.800c1.900.700 3.100 2.500 3.500 5.200"/></svg><div><strong>Any sport, any level</strong><span>Every game lists its level, so you know what you're joining.</span></div></div>
+        <div class="perk"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12V4h8l10 10-8 8L3 12z"/><circle cx="7.500" cy="7.500" r="1.500"/></svg><div><strong>Free to use</strong><span>No fees from us. You only pay your share if the host lists a cost.</span></div></div>
+      </div>
+      <section class="host-band">
+        <div><h2>Short a player?</h2><p>Post your game in a minute, share the link in your group chat and pick who joins.</p></div>
+        <a class="btn btn-lg" href="#/host">Host a game <span class="arr">→</span></a>
+      </section>
     `);
+    app.classList.add("wide");
 
     try {
       const games = await rpc("list_games");
       const list = document.getElementById("game-list");
       if (!list) return;
+      const left = (g) => Math.max(0, g.spots_needed - g.spots_filled);
+      if (games.length) {
+        const n = (count, word) => `<div><b>${count}</b><span>${word}${count === 1 ? "" : "s"}</span></div>`;
+        document.getElementById("hero-find").textContent = `See ${games.length} open game${games.length > 1 ? "s" : ""}`;
+        const stats = document.getElementById("stats");
+        stats.innerHTML = n(games.length, "open game") + n(games.reduce((s, g) => s + left(g), 0), "open spot") + n(new Set(games.map((g) => g.sport)).size, "sport");
+        stats.hidden = false;
+      }
+      const next = games.find((g) => !isPast(g.starts_at) && left(g)) || games[0];
+      document.getElementById("hero-art").innerHTML = next ? `
+        <a class="feature" href="#/game/${next.id}">
+          <span class="feature-label">Next game</span>
+          <div class="feature-row">${dateTile(next.starts_at)}<div><span class="sport-chip">${esc(next.sport)}</span><div class="when">${fmtWhen(next.starts_at)}</div></div></div>
+          ${gameMeta(next, false)}
+          ${spotsBlock(next)}
+          <span class="feature-cta">Request a spot <span class="arr">→</span></span>
+        </a>` : `
+        <a class="feature" href="#/host">
+          <span class="feature-label">No games yet</span>
+          <div class="when" style="margin:12px 0 6px">Be the first to post one</div>
+          <div class="meta"><span>It takes a minute, and your group chat does the rest.</span></div>
+          <span class="feature-cta">Host a game <span class="arr">→</span></span>
+        </a>`;
       list.innerHTML = games.length ? games.map((g) => `
         <a class="card game-card" href="#/game/${g.id}">
-          <div class="game-top"><span class="sport-chip">${esc(g.sport)}</span>${isPast(g.starts_at) ? `<span class="status pending">Started</span>` : hasPin(g) ? `<span class="hint">🗺️ On map</span>` : ""}</div>
-          <div class="when">${fmtWhen(g.starts_at)}</div>
-          ${gameMeta(g, false)}
-          ${spotsBlock(g)}
+          ${dateTile(g.starts_at)}
+          <div class="game-body">
+            <div class="game-top"><span class="sport-chip">${esc(g.sport)}</span>${isPast(g.starts_at) ? `<span class="status pending">Started</span>` : `<span class="arr">→</span>`}</div>
+            <div class="when">${fmtWhen(g.starts_at).split(" · ")[1]}</div>
+            ${gameMeta(g, false)}
+            ${spotsBlock(g)}
+          </div>
         </a>`).join("") : `
-        <div class="card empty"><div class="big">⚽</div><h3>No open games yet</h3>
+        <div class="card empty"><h3>No open games yet</h3>
           <p class="muted">Be the first. Post a game and share it in your group chat.</p>
           <a class="btn" href="#/host">Host a game</a></div>`;
       renderHomeMap(games);
@@ -505,7 +552,7 @@
       <div class="card ${s.status === "approved" ? "success" : ""}">
         <div class="game-top"><span class="sport-chip">${esc(g.sport)}</span><span class="status ${g.status !== "open" ? "cancelled" : s.status}">${g.status === "removed" ? "Game removed" : g.status === "cancelled" ? "Game cancelled" : s.status}</span></div>
         <div class="when">${fmtWhen(g.starts_at)}</div>
-        <div class="meta"><span>📍 ${hasPin(g) ? `<a href="${gmapsUrl(g)}" target="_blank" rel="noopener">${esc(g.location)}</a>` : esc(g.location)}</span>${g.cost_per_player ? `<span>💶 ${esc(g.cost_per_player)}</span>` : ""}</div>
+        <div class="meta"><span>${hasPin(g) ? `<a href="${gmapsUrl(g)}" target="_blank" rel="noopener">${esc(g.location)}</a>` : esc(g.location)}</span>${g.cost_per_player ? `<span>Cost: ${esc(g.cost_per_player)}</span>` : ""}</div>
         <p>${text}</p>
         ${s.status === "approved" && s.host_contact ? `<p><b>Host contact:</b> ${contactLink(s.host_contact)}</p>` : ""}
       </div>
