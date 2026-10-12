@@ -197,3 +197,20 @@ details summary { cursor: pointer; font-weight: 600; color: var(--green); }
 .pop-loc, .pop-spots { font-size: .85rem; color: var(--ink-2); }
 .pop-btn { margin-top: 8px; min-height: 34px; padding: 6px 12px; font-size: .85rem; color: var(--ink) !important; text-decoration: none; }
 .leaflet-popup-content { margin: 12px 14px; }
+
+/* Accounts */
+.avatar { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--lime); color: var(--ink); font: 900 1rem Archivo, Inter, sans-serif; text-decoration: none; }
+.hero-small { font-size: .95rem !important; margin: -8px 0 20px !important; }
+.hero-small a { color: var(--lime); font-weight: 600; }
+.pick { display: flex; flex-wrap: wrap; gap: 8px; }
+.pick-btn { border: 2px solid var(--line); background: #fff; color: var(--ink); border-radius: 12px; padding: 10px 14px; font: 600 .95rem Inter, sans-serif; cursor: pointer; min-height: 44px; }
+.pick-btn:hover { border-color: var(--green); }
+.pick-btn.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+.pick-3 { display: grid; grid-template-columns: repeat(3, 1fr); }
+.pick-3 .pick-btn { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 6px; }
+.pick-3 .pick-btn span { font-weight: 400; font-size: .78rem; color: var(--muted); }
+.pick-3 .pick-btn.on span { color: #cfd8d2; }
+.pw-wrap { position: relative; }
+.pw-wrap input { padding-right: 70px; }
+.pw-toggle { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); border: 0; background: none; color: var(--green); font: 600 .9rem Inter, sans-serif; cursor: pointer; padding: 6px; }
+@media (max-width: 420px) { .hide-sm { display: none; } nav { gap: 10px; } .logo { font-size: 1.1rem; } }

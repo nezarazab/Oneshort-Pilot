@@ -23,6 +23,74 @@
     return msg;
   }
 
+  // ---------- Accounts (Supabase Auth: email + password) ----------
+  const authApi = live ? {
+    async getUser() { const { data } = await client.auth.getSession(); return data.session ? data.session.user : null; },
+    async signUp(email, password) { const { data, error } = await client.auth.signUp({ email, password }); if (error) throw error; return data; },
+    async signIn(email, password) { const { data, error } = await client.auth.signInWithPassword({ email, password }); if (error) throw error; return data; },
+    async signOut() { await client.auth.signOut(); },
+    async resetEmail(email) { const { error } = await client.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname }); if (error) throw error; },
+    async updatePassword(pw) { const { error } = await client.auth.updateUser({ password: pw }); if (error) throw error; },
+    onChange(cb) { client.auth.onAuthStateChange((event) => cb(event)); },
+  } : window.OneShortMock.auth;
+
+  function authError(e) {
+    const m = (e && e.message) || "";
+    if (/invalid login credentials/i.test(m)) return "Wrong email or password.";
+    if (/already registered|already been registered/i.test(m)) return "This email already has an account. Log in instead.";
+    if (/at least 6/i.test(m)) return "Your password needs at least 6 characters.";
+    if (/email not confirmed/i.test(m)) return "Please confirm your email first (check your inbox), then log in.";
+    if (/rate limit|too many/i.test(m)) return "Too many tries. Please wait a minute and try again.";
+    if (/valid email|invalid.*email/i.test(m)) return "Please enter a valid email address.";
+    return m || "Something went wrong. Please try again.";
+  }
+
+  let me = null; // { user, profile } when logged in
+  const PENDING = "oneshort-pending-profile", NEXT = "oneshort-next";
+  const ss = { get: (k) => { try { return sessionStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { sessionStorage.setItem(k, v); } catch {} }, del: (k) => { try { sessionStorage.removeItem(k); } catch {} } };
+  const ls = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} }, del: (k) => { try { localStorage.removeItem(k); } catch {} } };
+
+  async function loadMe() {
+    let user = null;
+    try { user = await authApi.getUser(); } catch {}
+    if (!user) { me = null; renderNav(); return null; }
+    let profile = null;
+    try { profile = await rpc("my_profile"); } catch {}
+    if (!profile) {
+      // profile typed at sign-up but saved later (when email confirmation was on)
+      try {
+        const pend = JSON.parse(ls.get(PENDING) || "null");
+        if (pend && pend.email === (user.email || "").toLowerCase()) { profile = await rpc("save_profile", pend.data); ls.del(PENDING); }
+      } catch {}
+    }
+    me = { user, profile };
+    renderNav();
+    return me;
+  }
+  function renderNav() {
+    const nav = document.querySelector(".topbar nav");
+    if (!nav) return;
+    if (me) {
+      const initial = esc(((me.profile && me.profile.name) || me.user.email || "?").trim().charAt(0).toUpperCase());
+      nav.innerHTML = `<a href="#/" class="nav-link hide-sm">Games</a><a href="#/host" class="btn btn-small">Host a game</a><a href="#/me" class="avatar" title="My account" aria-label="My account">${initial}</a>`;
+    } else {
+      nav.innerHTML = `<a href="#/" class="nav-link hide-sm">Games</a><a href="#/login" class="nav-link">Log in</a><a href="#/signup" class="btn btn-small">Sign up</a>`;
+    }
+  }
+  // Send to login (and come back afterwards). Returns true if the user may continue.
+  function requireAccount(nextHash, why) {
+    if (me && me.profile) return true;
+    ss.set(NEXT, nextHash);
+    if (me && !me.profile) { location.hash = "#/me"; return false; }
+    if (why) ss.set("oneshort-why", why);
+    location.hash = "#/login";
+    return false;
+  }
+  function goNext() {
+    const next = ss.get(NEXT) || "#/"; ss.del(NEXT);
+    if (location.hash === next) route(); else location.hash = next;
+  }
+
   // ---------- Helpers ----------
   const app = document.getElementById("app");
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -161,20 +229,29 @@
 
   // ---------- Views ----------
 
+  function activityRows(act, onlyUpcoming) {
+    const keep = (iso) => !onlyUpcoming || new Date(iso) > Date.now() - 2 * 3600e3;
+    const hosting = act.hosting.filter((g) => keep(g.starts_at) && (!onlyUpcoming || g.status === "open"));
+    const reqs = act.requests.filter((r) => keep(r.starts_at) && (!onlyUpcoming || ["pending", "approved"].includes(r.status)));
+    return hosting.map((g) => `<a href="#/manage/${g.id}"><span><b>Hosting:</b> ${esc(g.sport)} · ${fmtWhen(g.starts_at)}${g.status !== "open" ? ` <span class="status cancelled">${esc(g.status)}</span>` : g.pending ? ` <span class="status pending">${g.pending} waiting</span>` : ""}</span><span>Manage →</span></a>`).join("")
+      + reqs.map((r) => `<a href="#/request/${r.id}"><span><b>Joining:</b> ${esc(r.sport)} · ${fmtWhen(r.starts_at)} <span class="status ${r.game_status !== "open" ? "cancelled" : esc(r.status)}">${r.game_status !== "open" ? esc(r.game_status) : esc(r.status)}</span></span><span>Status →</span></a>`).join("");
+  }
+
   async function viewHome() {
     const mine = getMine();
-    const mineHtml = mine.games.length || mine.requests.length ? `
-      <div class="section-head"><h2>Your activity</h2></div>
-      <div class="card mine">
-        ${mine.games.map((g) => `<a href="#/manage/${g.id}/${g.token}"><span><b>Hosting:</b> ${esc(g.sport)} · ${fmtWhen(g.starts_at)}</span><span>Manage →</span></a>`).join("")}
-        ${mine.requests.map((r) => `<a href="#/request/${r.id}/${r.token}"><span><b>Requested:</b> ${esc(r.sport)} · ${fmtWhen(r.starts_at)}</span><span>Status →</span></a>`).join("")}
-      </div>` : "";
+    let rows = mine.games.map((g) => `<a href="#/manage/${g.id}/${g.token}"><span><b>Hosting:</b> ${esc(g.sport)} · ${fmtWhen(g.starts_at)}</span><span>Manage →</span></a>`).join("")
+      + mine.requests.map((r) => `<a href="#/request/${r.id}/${r.token}"><span><b>Requested:</b> ${esc(r.sport)} · ${fmtWhen(r.starts_at)}</span><span>Status →</span></a>`).join("");
+    if (me) { try { rows = activityRows(await rpc("my_activity"), true) + rows; } catch {} }
+    const mineHtml = rows ? `
+      <div class="section-head"><h2>Your games</h2>${me ? `<a href="#/me">See all</a>` : ""}</div>
+      <div class="card mine">${rows}</div>` : "";
 
     setView(`
       <section class="hero">
         <span class="pill-badge">● Pilot · Eindhoven</span>
         <h1>Short a player?<br><em>Not anymore.</em></h1>
         <p>Post your game, players nearby request a spot, you pick who joins. Any sport.</p>
+        ${me ? "" : `<p class="hero-small">New here? <a href="#/signup">Create a free account</a> in 30 seconds.</p>`}
         <div class="btn-row">
           <a class="btn" href="#games" data-scroll="games">Find a game</a>
           <a class="btn btn-ghost" href="#/host">Host a game</a>
@@ -213,6 +290,7 @@
   }
 
   function viewHost() {
+    if (!requireAccount("#/host", "Log in or create an account to host a game.")) return;
     const t = new Date(); t.setDate(t.getDate() + 1); t.setHours(19, 0, 0, 0);
     const pad = (n) => String(n).padStart(2, "0");
     const defaultWhen = `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}T19:00`;
@@ -223,7 +301,7 @@
         <div id="form-error"></div>
         <div class="field">
           <label for="sport">Sport</label>
-          <input id="sport" name="sport" required maxlength="40" placeholder="e.g. Football" autocomplete="off" />
+          <input id="sport" name="sport" required maxlength="40" placeholder="e.g. Football" autocomplete="off" value="${esc(me.profile.fav_sport)}" />
           <div class="chips">${["Football", "Padel", "Basketball", "Volleyball", "Tennis"].map((s) => `<button type="button" class="chip" data-sport="${s}">${s}</button>`).join("")}</div>
         </div>
         <div class="grid-2">
@@ -244,11 +322,7 @@
           <div class="field"><label for="cost">Cost per player <span class="hint">(optional)</span></label><input id="cost" name="cost" maxlength="40" placeholder="e.g. €3 or Free" /></div>
         </div>
         <div class="field"><label for="notes">Notes <span class="hint">(optional)</span></label><textarea id="notes" name="notes" maxlength="500" placeholder="e.g. 5v5, bring a dark and a light shirt"></textarea></div>
-        <div class="grid-2">
-          <div class="field"><label for="hname">Your name</label><input id="hname" name="hname" required maxlength="60" autocomplete="given-name" /></div>
-          <div class="field"><label for="hcontact">Phone (WhatsApp) or email</label><input id="hcontact" name="hcontact" required maxlength="100" placeholder="06 12345678" autocomplete="tel" /></div>
-        </div>
-        <p class="hint">Your contact is only shown to players you approve.</p>
+        <p class="hint">Posting as <b>${esc(me.profile.name)}</b>. Players you approve will see ${me.profile.phone ? "your WhatsApp number" : "your email"} (<a href="#/me">change</a>).</p>
         <button class="btn btn-block" type="submit">Post game</button>
       </form>`);
 
@@ -313,7 +387,7 @@
       ev.preventDefault();
       const f = ev.target, btn = f.querySelector("[type=submit]"), errBox = document.getElementById("form-error");
       const v = (n) => f.elements[n].value.trim();
-      const missing = ["sport", "when", "spots", "location", "hname", "hcontact"].filter((n) => !v(n));
+      const missing = ["sport", "when", "spots", "location"].filter((n) => !v(n));
       if (missing.length) { errBox.innerHTML = `<div class="form-error">Please fill in all required fields.</div>`; f.elements[missing[0]].focus(); return; }
       const when = new Date(v("when"));
       if (isNaN(when) || when < new Date()) { errBox.innerHTML = `<div class="form-error">Pick a date and time in the future.</div>`; return; }
@@ -321,14 +395,12 @@
       if (!(spots >= 1 && spots <= 30)) { errBox.innerHTML = `<div class="form-error">Players needed must be between 1 and 30.</div>`; return; }
       btn.disabled = true; btn.textContent = "Posting…";
       try {
-        const res = await rpc("create_game", {
+        const id = await rpc("post_game", {
           p_sport: v("sport"), p_location: v("location"), p_starts_at: when.toISOString(), p_spots: spots,
-          p_level: v("level"), p_host_name: v("hname"), p_host_contact: v("hcontact"), p_cost: v("cost") || null, p_notes: v("notes") || null,
+          p_level: v("level"), p_cost: v("cost") || null, p_notes: v("notes") || null,
           p_lat: pin ? pin.lat : null, p_lng: pin ? pin.lng : null,
         });
-        const row = Array.isArray(res) ? res[0] : res;
-        addMine("games", { id: row.id, token: row.host_token, sport: v("sport"), starts_at: when.toISOString() });
-        viewHostCreated(row.id, row.host_token, { sport: v("sport"), starts_at: when.toISOString(), location: v("location"), spots, lat: pin ? pin.lat : null, lng: pin ? pin.lng : null });
+        viewHostCreated(id, { sport: v("sport"), starts_at: when.toISOString(), location: v("location"), spots, lat: pin ? pin.lat : null, lng: pin ? pin.lng : null });
       } catch (e) {
         errBox.innerHTML = `<div class="form-error">${esc(e.message)}</div>`;
         btn.disabled = false; btn.textContent = "Post game";
@@ -340,25 +412,18 @@
     return `${g.sport} · ${fmtWhen(g.starts_at)} · ${g.location}\nNeed ${g.spots} player${g.spots > 1 ? "s" : ""}! Request a spot on OneShort: ${base()}#/game/${id}${hasPin(g) ? `\n📍 ${gmapsUrl(g)}` : ""}`;
   }
 
-  function viewHostCreated(id, token, g) {
-    const manage = `${base()}#/manage/${id}/${token}`;
+  function viewHostCreated(id, g) {
     setView(`
-      <div class="page-title"><h1>Your game is live 🎉</h1></div>
+      <div class="page-title"><h1>Your game is live 🎉</h1><p class="muted">You can manage it anytime from <a href="#/me">My account</a>.</p></div>
       <div class="card success">
-        <h2>1. Save your host link</h2>
-        <p>This private link is how you approve players. <b>Anyone with it can manage your game</b>, so don't share it.</p>
-        <div class="linkbox"><input readonly value="${esc(manage)}" aria-label="Host link" /><button class="btn btn-dark btn-small" data-copy="${esc(manage)}">Copy</button></div>
-        <div class="btn-row"><a class="btn btn-wa btn-small" target="_blank" rel="noopener" href="${waShare("My OneShort host link (private): " + manage)}">Send to myself on WhatsApp</a></div>
-      </div>
-      <div class="card">
-        <h2>2. Share the game</h2>
+        <h2>Share the game</h2>
         <p class="muted">Post it in your group chat so players can request a spot.</p>
         <div class="btn-row">
           <a class="btn btn-wa" target="_blank" rel="noopener" href="${waShare(shareText(g, id))}">Share on WhatsApp</a>
           <button class="btn btn-ghost" data-copy="${esc(base() + "#/game/" + id)}">Copy game link</button>
         </div>
       </div>
-      <a class="btn btn-block" href="#/manage/${id}/${token}">Go to my game →</a>`);
+      <a class="btn btn-block" href="#/manage/${id}">Go to my game →</a>`);
   }
 
   async function viewGame(id) {
@@ -378,35 +443,22 @@
         <div class="btn-row" style="margin-top:12px"><a class="btn btn-dark btn-small" href="${gmapsUrl(g)}" target="_blank" rel="noopener">Open in Google Maps</a></div></div>` : ""}
       <div class="card">${spotsBlock(g)}${g.notes ? `<p class="req-msg">${esc(g.notes)}</p>` : ""}
         <div class="btn-row" style="margin-top:12px"><a class="btn btn-wa btn-small" target="_blank" rel="noopener" href="${waShare(`${g.sport} · ${fmtWhen(g.starts_at)} · ${g.location}\nRequest a spot: ${share}`)}">Share</a></div></div>
-      ${closed ? `<div class="card empty"><h3>${reason}</h3><a class="btn" href="#/">See other games</a></div>` : `
-      <form class="card" id="req-form" novalidate>
-        <h2>Request a spot</h2>
-        <p class="muted">${esc(g.host_name)} will approve or decline. Once approved you'll see their contact.</p>
-        <div id="form-error"></div>
-        <div class="grid-2">
-          <div class="field"><label for="pname">Your name</label><input id="pname" required maxlength="60" autocomplete="given-name" /></div>
-          <div class="field"><label for="pcontact">Phone (WhatsApp) or email</label><input id="pcontact" required maxlength="100" placeholder="06 12345678" autocomplete="tel" /></div>
-        </div>
-        <div class="field"><label for="plevel">Your level in ${esc(g.sport)}</label>
-          <select id="plevel"><option>Beginner</option><option selected>Intermediate</option><option>Advanced</option></select></div>
-        <div class="field"><label for="pmsg">Message to host <span class="hint">(optional)</span></label><textarea id="pmsg" maxlength="300" placeholder="e.g. I usually play as a defender"></textarea></div>
-        <button class="btn btn-block" type="submit">Request spot</button>
-      </form>`}`);
+      ${requestSection(g, closed, reason)}`);
 
     if (hasPin(g)) showGameMap("game-map", g);
+    const login = document.getElementById("login-to-join");
+    if (login) login.addEventListener("click", (e) => { e.preventDefault(); requireAccount(`#/game/${g.id}`, "Log in or create an account to request a spot."); });
+    const signup = document.getElementById("signup-to-join");
+    if (signup) signup.addEventListener("click", () => ss.set(NEXT, `#/game/${g.id}`));
     const form = document.getElementById("req-form");
     if (!form) return;
     form.addEventListener("submit", async (ev) => {
       ev.preventDefault();
       const btn = form.querySelector("[type=submit]"), errBox = document.getElementById("form-error");
-      const name = document.getElementById("pname").value.trim(), contact = document.getElementById("pcontact").value.trim();
-      if (!name || contact.length < 3) { errBox.innerHTML = `<div class="form-error">Please fill in your name and contact.</div>`; return; }
       btn.disabled = true; btn.textContent = "Sending…";
       try {
-        const res = await rpc("request_spot", { p_game: g.id, p_name: name, p_contact: contact, p_level: document.getElementById("plevel").value, p_message: document.getElementById("pmsg").value.trim() || null });
-        const row = Array.isArray(res) ? res[0] : res;
-        addMine("requests", { id: row.id, token: row.player_token, sport: g.sport, starts_at: g.starts_at });
-        location.hash = `#/request/${row.id}/${row.player_token}?new=1`;
+        const id = await rpc("join_game", { p_game: g.id, p_level: document.getElementById("plevel").value, p_message: document.getElementById("pmsg").value.trim() || null });
+        location.hash = `#/request/${id}?new=1`;
       } catch (e) {
         errBox.innerHTML = `<div class="form-error">${esc(e.message)}</div>`;
         btn.disabled = false; btn.textContent = "Request spot";
@@ -414,11 +466,32 @@
     });
   }
 
+  function requestSection(g, closed, reason) {
+    if (g.is_host) return `<div class="card"><h2>This is your game</h2><p class="muted">Approve players and see who's coming on your game page.</p><a class="btn" href="#/manage/${g.id}">Manage game →</a></div>`;
+    if (g.my_request_id && ["pending", "approved"].includes(g.my_request_status)) return `<div class="card ${g.my_request_status === "approved" ? "success" : ""}"><h2>${g.my_request_status === "approved" ? "You're in! ✅" : "Request sent"}</h2><p class="muted">${g.my_request_status === "approved" ? "See the host's contact on your request page." : `Waiting for ${esc(g.host_name)} to respond.`}</p><a class="btn" href="#/request/${g.my_request_id}">View my request →</a></div>`;
+    if (closed) return `<div class="card empty"><h3>${reason}</h3><a class="btn" href="#/">See other games</a></div>`;
+    if (!me || !me.profile) return `<div class="card"><h2>Request a spot</h2><p class="muted">Create a free account to request a spot. It takes 30 seconds.</p>
+      <div class="btn-row"><a class="btn" id="signup-to-join" href="#/signup">Sign up</a><a class="btn btn-ghost" id="login-to-join" href="#/login">Log in</a></div></div>`;
+    const sameSport = me.profile.fav_sport.trim().toLowerCase() === String(g.sport).trim().toLowerCase();
+    const lvl = sameSport ? me.profile.level : "Intermediate";
+    return `<form class="card" id="req-form" novalidate>
+        <h2>Request a spot</h2>
+        <p class="muted">Requesting as <b>${esc(me.profile.name)}</b>. ${esc(g.host_name)} will approve or decline; once approved you'll see each other's contact.</p>
+        <div id="form-error"></div>
+        <div class="field"><label for="plevel">Your level in ${esc(g.sport)}</label>
+          <select id="plevel">${["Beginner", "Intermediate", "Advanced"].map((l) => `<option ${l === lvl ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+        <div class="field"><label for="pmsg">Message to host <span class="hint">(optional)</span></label><textarea id="pmsg" maxlength="300" placeholder="e.g. I usually play as a defender"></textarea></div>
+        <button class="btn btn-block" type="submit">Request spot</button>
+      </form>`;
+  }
+
   async function viewRequest(id, token, isNew) {
+    token = token || null;
     loading();
     let s;
-    try { s = await rpc("request_status", { p_id: id, p_token: token }); } catch (e) { return errorView(e.message); }
-    const g = s.game, link = `${base()}#/request/${id}/${token}`;
+    try { s = await rpc("request_status", { p_id: id, p_token: token }); }
+    catch (e) { if (!token && !me) return requireAccount(`#/request/${id}`, "Log in to see your request."); return errorView(e.message); }
+    const g = s.game, link = token ? `${base()}#/request/${id}/${token}` : "";
     const text = {
       pending: `Waiting for ${esc(g.host_name)} to respond. Check back on this page.`,
       approved: `You're in! Contact ${esc(g.host_name)} to confirm the details.`,
@@ -436,13 +509,14 @@
         <p>${text}</p>
         ${s.status === "approved" && s.host_contact ? `<p><b>Host contact:</b> ${contactLink(s.host_contact)}</p>` : ""}
       </div>
-      <div class="card">
+      ${token ? `<div class="card">
         <h3>Save this page</h3>
         <p class="muted">Bookmark it or send it to yourself to check if you're approved.</p>
         <div class="linkbox"><input readonly value="${esc(link)}" aria-label="Status link" /><button class="btn btn-dark btn-small" data-copy="${esc(link)}">Copy</button></div>
         <div class="btn-row"><a class="btn btn-wa btn-small" target="_blank" rel="noopener" href="${waShare("My OneShort request: " + link)}">Send to myself on WhatsApp</a>
         <button class="btn btn-ghost btn-small" id="refresh">Refresh status</button></div>
-      </div>
+      </div>` : `<div class="card"><p class="muted" style="margin:0">You'll always find this request under <a href="#/me">My account</a>.</p>
+        <div class="btn-row" style="margin-top:10px"><button class="btn btn-ghost btn-small" id="refresh">Refresh status</button><a class="btn btn-ghost btn-small" href="#/game/${g.id}">View game</a></div></div>`}
       ${["pending", "approved"].includes(s.status) && g.status === "open" && !isPast(g.starts_at) ? `<button class="btn btn-danger btn-block" id="withdraw">Can't make it? Withdraw</button>` : ""}`);
 
     document.getElementById("refresh").addEventListener("click", () => viewRequest(id, token, false));
@@ -454,15 +528,17 @@
   }
 
   async function viewManage(id, token) {
+    token = token || null;
     let data;
-    try { data = await rpc("host_view", { p_game: id, p_token: token }); } catch (e) { return errorView(e.message); }
+    try { data = await rpc("host_view", { p_game: id, p_token: token }); }
+    catch (e) { if (!token && !me) return requireAccount(`#/manage/${id}`, "Log in to manage your game."); return errorView(e.message); }
     const g = data.game, reqs = data.requests;
     const past = isPast(g.starts_at), cancelled = g.status !== "open";
     const left = g.spots_needed - g.spots_filled;
     const pending = reqs.filter((r) => r.status === "pending").length;
     const order = { pending: 0, approved: 1, declined: 2, withdrawn: 3 };
     reqs.sort((a, b) => order[a.status] - order[b.status] || new Date(a.created_at) - new Date(b.created_at));
-    addMine("games", { id, token, sport: g.sport, starts_at: g.starts_at });
+    if (token) addMine("games", { id, token, sport: g.sport, starts_at: g.starts_at });
 
     const reqHtml = reqs.length ? reqs.map((r) => `
       <div class="req">
@@ -494,7 +570,7 @@
           <button class="btn btn-ghost btn-small" id="refresh">Refresh</button></div>` : ""}
       </div>
       <div class="card"><h2>Players</h2>${reqHtml}</div>
-      <p class="hint">🔒 This is your private host page. Keep the link to yourself.</p>
+      ${token ? `<p class="hint">🔒 This is your private host page. Keep the link to yourself.</p>` : ""}
       ${!cancelled && !past ? `<button class="btn btn-danger btn-block" id="cancel-game">Cancel game</button>` : ""}`);
 
     const reload = () => viewManage(id, token);
@@ -513,6 +589,190 @@
       if (!confirm("Cancel this game? Players will see it's cancelled.")) return;
       try { await rpc("host_cancel_game", { p_game: id, p_token: token }); toast("Game cancelled"); reload(); } catch (e) { toast(e.message); }
     });
+  }
+
+  // ---------- Account pages ----------
+  const SPORTS = ["Football", "Padel", "Basketball", "Volleyball", "Tennis"];
+  const LEVELS = [["Beginner", "Just for fun"], ["Intermediate", "Play regularly"], ["Advanced", "Competitive"]];
+
+  function profileFields(p) {
+    p = p || {};
+    const custom = p.fav_sport && !SPORTS.includes(p.fav_sport);
+    return `
+      <div class="field"><label for="pf-name">Your name</label><input id="pf-name" required maxlength="60" autocomplete="given-name" value="${esc(p.name || "")}" placeholder="First name is fine" /></div>
+      <div class="field"><label>Favourite sport</label>
+        <div class="pick" id="pf-sport">${SPORTS.map((x) => `<button type="button" class="pick-btn ${p.fav_sport === x ? "on" : ""}" data-val="${x}">${x}</button>`).join("")}<button type="button" class="pick-btn ${custom ? "on" : ""}" data-val="__other">Other</button></div>
+        <input id="pf-sport-other" maxlength="40" placeholder="Which sport?" value="${custom ? esc(p.fav_sport) : ""}" ${custom ? "" : "hidden"} style="margin-top:8px" /></div>
+      <div class="field"><label>Your level</label>
+        <div class="pick pick-3" id="pf-level">${LEVELS.map(([l, d]) => `<button type="button" class="pick-btn ${p.level === l ? "on" : ""}" data-val="${l}"><b>${l}</b><span>${d}</span></button>`).join("")}</div></div>
+      <div class="field"><label for="pf-phone">WhatsApp number <span class="hint">(optional, recommended)</span></label><input id="pf-phone" type="tel" maxlength="30" autocomplete="tel" value="${esc(p.phone || "")}" placeholder="06 12345678" />
+        <div class="hint" style="margin-top:4px">Only shared with hosts or players you're matched with. Without it, we share your email.</div></div>`;
+  }
+  function wireProfileFields() {
+    const pick = (id, onPick) => app.querySelectorAll(`#${id} .pick-btn`).forEach((b) => b.addEventListener("click", () => {
+      app.querySelectorAll(`#${id} .pick-btn`).forEach((x) => x.classList.remove("on")); b.classList.add("on"); if (onPick) onPick(b.dataset.val);
+    }));
+    pick("pf-sport", (v) => { const o = document.getElementById("pf-sport-other"); o.hidden = v !== "__other"; if (v === "__other") o.focus(); });
+    pick("pf-level");
+  }
+  function readProfileFields() {
+    const name = document.getElementById("pf-name").value.trim();
+    const sb = app.querySelector("#pf-sport .pick-btn.on"), lb = app.querySelector("#pf-level .pick-btn.on");
+    let sport = sb ? sb.dataset.val : "";
+    if (sport === "__other") sport = document.getElementById("pf-sport-other").value.trim();
+    if (!name) throw new Error("Please fill in your name.");
+    if (!sport) throw new Error("Pick your favourite sport.");
+    if (!lb) throw new Error("Pick your level.");
+    return { p_name: name, p_phone: document.getElementById("pf-phone").value.trim() || null, p_sport: sport, p_level: lb.dataset.val };
+  }
+  const showErr = (msg) => { const b = document.getElementById("form-error"); if (b) { b.innerHTML = `<div class="form-error">${esc(msg)}</div>`; b.scrollIntoView({ block: "center", behavior: "smooth" }); } };
+  const pwToggle = (id) => `<button type="button" class="pw-toggle" data-pw="${id}">Show</button>`;
+  function wirePwToggles() {
+    app.querySelectorAll("[data-pw]").forEach((b) => b.addEventListener("click", () => {
+      const i = document.getElementById(b.dataset.pw); i.type = i.type === "password" ? "text" : "password"; b.textContent = i.type === "password" ? "Show" : "Hide";
+    }));
+  }
+
+  function viewSignup() {
+    if (me && me.profile) return goNext();
+    setView(`
+      <div class="page-title"><h1>Create your account</h1><p class="muted">Free, and takes about 30 seconds. Already have one? <a href="#/login">Log in</a></p></div>
+      <form class="card" id="signup-form" novalidate>
+        <div id="form-error"></div>
+        <div class="field"><label for="su-email">Email</label><input id="su-email" type="email" required autocomplete="email" inputmode="email" placeholder="you@email.com" /></div>
+        <div class="field"><label for="su-pw">Password <span class="hint">(at least 6 characters)</span></label>
+          <div class="pw-wrap"><input id="su-pw" type="password" required minlength="6" autocomplete="new-password" />${pwToggle("su-pw")}</div></div>
+        ${profileFields()}
+        <button class="btn btn-block" type="submit">Create account</button>
+        <p class="hint" style="text-align:center;margin:10px 0 0">By signing up you agree that we store your details for the OneShort pilot.</p>
+      </form>`);
+    wireProfileFields(); wirePwToggles();
+    document.getElementById("signup-form").addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const btn = ev.target.querySelector("[type=submit]");
+      const email = document.getElementById("su-email").value.trim().toLowerCase(), pw = document.getElementById("su-pw").value;
+      let prof;
+      try {
+        if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error("Please enter a valid email address.");
+        if (pw.length < 6) throw new Error("Your password needs at least 6 characters.");
+        prof = readProfileFields();
+      } catch (e) { return showErr(e.message); }
+      btn.disabled = true; btn.textContent = "Creating account…";
+      try {
+        const res = await authApi.signUp(email, pw);
+        if (!res.session) {
+          // Email confirmation is switched on in Supabase: save the profile after the first login.
+          ls.set(PENDING, JSON.stringify({ email, data: prof }));
+          setView(`<div class="page-title"><h1>Check your email 📬</h1></div><div class="card"><p>We sent a confirmation link to <b>${esc(email)}</b>. Click it, then log in.</p><a class="btn" href="#/login">Log in</a></div>`);
+          return;
+        }
+        await rpc("save_profile", prof);
+        await loadMe();
+        toast(`Welcome, ${prof.p_name}!`);
+        goNext();
+      } catch (e) { showErr(authError(e)); btn.disabled = false; btn.textContent = "Create account"; }
+    });
+  }
+
+  function viewLogin() {
+    if (me && me.profile) return goNext();
+    const why = ss.get("oneshort-why"); ss.del("oneshort-why");
+    setView(`
+      <div class="page-title"><h1>Log in</h1><p class="muted">New to OneShort? <a href="#/signup">Create an account</a></p></div>
+      <form class="card" id="login-form" novalidate>
+        ${why ? `<div class="warn">${esc(why)}</div>` : ""}
+        <div id="form-error"></div>
+        <div class="field"><label for="li-email">Email</label><input id="li-email" type="email" required autocomplete="email" inputmode="email" /></div>
+        <div class="field"><label for="li-pw">Password</label><div class="pw-wrap"><input id="li-pw" type="password" required autocomplete="current-password" />${pwToggle("li-pw")}</div></div>
+        <button class="btn btn-block" type="submit">Log in</button>
+        <p style="text-align:center;margin:12px 0 0"><a href="#/forgot">Forgot your password?</a></p>
+      </form>`);
+    wirePwToggles();
+    document.getElementById("login-form").addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const btn = ev.target.querySelector("[type=submit]");
+      const email = document.getElementById("li-email").value.trim(), pw = document.getElementById("li-pw").value;
+      if (!email || !pw) return showErr("Fill in your email and password.");
+      btn.disabled = true; btn.textContent = "Logging in…";
+      try {
+        await authApi.signIn(email, pw);
+        await loadMe();
+        if (!me.profile) { location.hash = "#/me"; return; }
+        toast(`Welcome back, ${me.profile.name}!`);
+        goNext();
+      } catch (e) { showErr(authError(e)); btn.disabled = false; btn.textContent = "Log in"; }
+    });
+  }
+
+  function viewForgot() {
+    setView(`
+      <a class="back" href="#/login">← Log in</a>
+      <div class="page-title"><h1>Reset password</h1><p class="muted">We'll email you a link to set a new password.</p></div>
+      <form class="card" id="forgot-form" novalidate>
+        <div id="form-error"></div>
+        <div class="field"><label for="fp-email">Email</label><input id="fp-email" type="email" required autocomplete="email" /></div>
+        <button class="btn btn-block" type="submit">Send reset link</button>
+      </form>`);
+    document.getElementById("forgot-form").addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const btn = ev.target.querySelector("[type=submit]"), email = document.getElementById("fp-email").value.trim();
+      if (!email) return showErr("Fill in your email.");
+      btn.disabled = true; btn.textContent = "Sending…";
+      try {
+        await authApi.resetEmail(email);
+        setView(`<div class="page-title"><h1>Check your email 📬</h1></div><div class="card"><p>If <b>${esc(email)}</b> has an account, you'll get a link to set a new password. Check your spam folder too.</p><a class="btn btn-ghost" href="#/login">Back to log in</a></div>`);
+      } catch (e) { showErr(authError(e)); btn.disabled = false; btn.textContent = "Send reset link"; }
+    });
+  }
+
+  function viewResetPassword() {
+    setView(`
+      <div class="page-title"><h1>Set a new password</h1></div>
+      <form class="card" id="reset-form" novalidate>
+        <div id="form-error"></div>
+        <div class="field"><label for="rp-pw">New password <span class="hint">(at least 6 characters)</span></label><div class="pw-wrap"><input id="rp-pw" type="password" autocomplete="new-password" />${pwToggle("rp-pw")}</div></div>
+        <button class="btn btn-block" type="submit">Save password</button>
+      </form>`);
+    wirePwToggles();
+    document.getElementById("reset-form").addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const pw = document.getElementById("rp-pw").value;
+      if (pw.length < 6) return showErr("Your password needs at least 6 characters.");
+      try { await authApi.updatePassword(pw); await loadMe(); toast("Password saved"); location.hash = "#/"; }
+      catch (e) { showErr(authError(e) + " The reset link may have expired; request a new one."); }
+    });
+  }
+
+  async function viewMe() {
+    if (!me) return requireAccount("#/me");
+    const setup = !me.profile;
+    let act = { hosting: [], requests: [] };
+    if (!setup) { try { act = await rpc("my_activity"); } catch {} }
+    const rows = activityRows(act, false);
+    setView(`
+      <div class="page-title"><h1>${setup ? "Finish your profile" : `Hi ${esc(me.profile.name)} 👋`}</h1><p class="muted">${esc(me.user.email)}</p></div>
+      ${setup ? "" : `<div class="section-head" style="margin-top:0"><h2>Your games</h2><a href="#/host">+ Host</a></div>
+      <div class="card mine">${rows || `<p class="muted" style="margin:0">Nothing yet. <a href="#/">Find a game</a> or <a href="#/host">host one</a>.</p>`}</div>
+      <div class="section-head"><h2>Profile</h2></div>`}
+      <form class="card" id="profile-form" novalidate>
+        <div id="form-error"></div>
+        ${profileFields(me.profile)}
+        <button class="btn btn-block" type="submit">${setup ? "Save and continue" : "Save changes"}</button>
+      </form>
+      ${setup ? "" : `<button class="btn btn-ghost btn-block" id="logout">Log out</button>`}`);
+    wireProfileFields();
+    document.getElementById("profile-form").addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const btn = ev.target.querySelector("[type=submit]");
+      let prof; try { prof = readProfileFields(); } catch (e) { return showErr(e.message); }
+      btn.disabled = true;
+      try {
+        await rpc("save_profile", prof); await loadMe(); toast("Profile saved");
+        if (setup) goNext(); else viewMe();
+      } catch (e) { showErr(e.message); btn.disabled = false; }
+    });
+    const lo = document.getElementById("logout");
+    if (lo) lo.addEventListener("click", async () => { await authApi.signOut(); await loadMe(); toast("Logged out"); location.hash = "#/"; });
   }
 
   // ---------- Admin ----------
@@ -593,13 +853,23 @@
 
   // ---------- Router ----------
   function route() {
+    // Supabase password-reset links arrive as #access_token=...&type=recovery
+    if (/access_token=|type=recovery|error_description=/.test(location.hash)) {
+      if (/error_description=/.test(location.hash)) return errorView("This link is invalid or has expired. Please request a new one.");
+      return loading();
+    }
     const [path, query] = (location.hash.slice(1) || "/").split("?");
     const parts = path.split("/").filter(Boolean);
     if (parts[0] === "host") return viewHost();
+    if (parts[0] === "signup") return viewSignup();
+    if (parts[0] === "login") return viewLogin();
+    if (parts[0] === "forgot") return viewForgot();
+    if (parts[0] === "reset") return viewResetPassword();
+    if (parts[0] === "me") { loading(); return viewMe(); }
     if (parts[0] === "game" && parts[1]) return viewGame(parts[1]);
-    if (parts[0] === "request" && parts[2]) return viewRequest(parts[1], parts[2], /new=1/.test(query || ""));
+    if (parts[0] === "request" && parts[1]) return viewRequest(parts[1], parts[2], /new=1/.test(query || ""));
     if (parts[0] === "admin") { loading(); return viewAdmin(false); }
-    if (parts[0] === "manage" && parts[2]) { loading(); return viewManage(parts[1], parts[2]); }
+    if (parts[0] === "manage" && parts[1]) { loading(); return viewManage(parts[1], parts[2]); }
     return viewHome();
   }
 
@@ -610,5 +880,11 @@
     if (s) { e.preventDefault(); const el = document.getElementById(s.dataset.scroll); if (el) el.scrollIntoView({ behavior: "smooth" }); }
   });
   window.addEventListener("hashchange", route);
-  route();
+  authApi.onChange((event) => {
+    if (event === "PASSWORD_RECOVERY") { loadMe().then(() => { location.hash = "#/reset"; }); return; }
+    if (event === "SIGNED_OUT") { me = null; renderNav(); }
+  });
+  renderNav();
+  loading();
+  loadMe().finally(route);
 })();

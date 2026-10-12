@@ -48,6 +48,15 @@ Alternative with no GitHub: app.netlify.com/drop → drag the folder in.
 3. Players see the map on the game page, plus an "Open in Google Maps" button for directions. The WhatsApp share text also includes the Google Maps link.
 4. Free: map tiles from OpenStreetMap and place search from Nominatim, no key or card needed. Fine for a pilot; for a big launch, switch to a paid tile/search provider.
 
+## 7. Accounts (email + password)
+
+1. Supabase → SQL Editor → paste `supabase/accounts.sql` → Run (after schema, admin and map). Existing games, requests and old links keep working.
+2. Supabase → **Authentication → Sign In / Providers → Email** → turn **off "Confirm email"** → Save. (Otherwise every sign-up needs an email, and Supabase's free email service only sends a few per hour.)
+3. Supabase → **Authentication → URL Configuration** → Site URL: `https://oneshort.app`, and add `https://oneshort.app/**` under Redirect URLs. (Needed for "Forgot password" links.)
+4. Sign-up asks for: email, password, name, favourite sport, level, and an optional WhatsApp number. Logged-in users post and join without typing their details again; everything is under **My account**.
+5. Accounts are required to host or join. Old secret host/player links from before still work.
+6. "Forgot password" emails use Supabase's free email service (a few per hour). For many users, add your own SMTP under Authentication → Emails.
+
 ## Good to know
 
 - There are no notifications: players check their status page, and hosts check their host page. Approved players and hosts contact each other over WhatsApp.
