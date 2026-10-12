@@ -102,6 +102,12 @@
     return `${day} · ${time}`;
   };
   const isPast = (iso) => new Date(iso) < new Date();
+  // Sport is free text, so match loosely; anything unknown gets the generic players photo.
+  const sportClass = (sport) => {
+    const s = String(sport).toLowerCase();
+    const hit = [["foot", "football"], ["soccer", "football"], ["futsal", "football"], ["basket", "basketball"], ["volley", "volleyball"], ["padel", "padel"], ["tennis", "tennis"]].find(([word]) => s.includes(word));
+    return "sport-bg" + (hit ? ` sport-${hit[1]}` : "");
+  };
   const dateTile = (iso) => {
     const [dow, day, mon] = fmtWhen(iso).split(" · ")[0].replace(",", "").split(" ");
     return `<div class="date-tile"><span>${dow}</span><b>${day}</b><span>${mon}</span></div>`;
@@ -254,8 +260,9 @@
       <section class="hero">
         <div class="hero-copy">
           <span class="pill-badge"><i></i>Live in Eindhoven · Pilot</span>
-          <h1>Find a pickup game <em>near you.</em></h1>
-          <p>Games around Eindhoven that are a player short. Request a spot, get approved by the host, and play. Any sport, any level.</p>
+          <h1>Bring your <em>game.</em></h1>
+          <p class="hero-tag">Never be a player short again</p>
+          <p>Meet players and join games at your level in Eindhoven.</p>
           <div class="btn-row">
             <a class="btn btn-lg" href="#games" data-scroll="games"><span id="hero-find">Find a game</span> <span class="arr">→</span></a>
             <a class="hero-link" href="#/host">Host a game</a>
@@ -283,7 +290,8 @@
         <div class="perk"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12V4h8l10 10-8 8L3 12z"/><circle cx="7.500" cy="7.500" r="1.500"/></svg><div><strong>Free to use</strong><span>No fees from us. You only pay your share if the host lists a cost.</span></div></div>
       </div>
       <section class="host-band">
-        <div><h2>Short a player?</h2><p>Post your game in a minute, share the link in your group chat and pick who joins.</p></div>
+        <div><h2>Short a player?</h2><p>Host a game in a minute, share the link in your group chat and pick who joins.</p>
+          <ul class="sports"><li>Football</li><li>Padel</li><li>Basketball</li><li>Volleyball</li><li>Tennis</li></ul></div>
         <a class="btn btn-lg" href="#/host">Host a game <span class="arr">→</span></a>
       </section>
     `);
@@ -303,21 +311,21 @@
       }
       const next = games.find((g) => !isPast(g.starts_at) && left(g)) || games[0];
       document.getElementById("hero-art").innerHTML = next ? `
-        <a class="feature" href="#/game/${next.id}">
+        <a class="feature ${sportClass(next.sport)}" href="#/game/${next.id}">
           <span class="feature-label">Next game</span>
           <div class="feature-row">${dateTile(next.starts_at)}<div><span class="sport-chip">${esc(next.sport)}</span><div class="when">${fmtWhen(next.starts_at)}</div></div></div>
           ${gameMeta(next, false)}
           ${spotsBlock(next)}
           <span class="feature-cta">Request a spot <span class="arr">→</span></span>
         </a>` : `
-        <a class="feature" href="#/host">
+        <a class="feature sport-bg" href="#/host">
           <span class="feature-label">No games yet</span>
           <div class="when" style="margin:12px 0 6px">Be the first to post one</div>
           <div class="meta"><span>It takes a minute, and your group chat does the rest.</span></div>
           <span class="feature-cta">Host a game <span class="arr">→</span></span>
         </a>`;
       list.innerHTML = games.length ? games.map((g) => `
-        <a class="card game-card" href="#/game/${g.id}">
+        <a class="card game-card ${sportClass(g.sport)}" href="#/game/${g.id}">
           ${dateTile(g.starts_at)}
           <div class="game-body">
             <div class="game-top"><span class="sport-chip">${esc(g.sport)}</span>${isPast(g.starts_at) ? `<span class="status pending">Started</span>` : `<span class="arr">→</span>`}</div>
