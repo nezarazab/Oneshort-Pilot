@@ -14,6 +14,7 @@
   --red-bg: #fde8e6;
   --ok-bg: #e7f6ee;
   --radius: 16px;
+  --gut: clamp(16px, 4vw, 72px); /* side gutter shared by the bar, the page and the footer */
   --shadow: 0 1px 2px rgba(14, 26, 18, 0.06), 0 6px 20px rgba(14, 26, 18, 0.06);
 }
 
@@ -31,14 +32,13 @@ h1, h2 { font-style: italic; text-transform: uppercase; }
 a { color: var(--green); }
 code { background: rgba(0,0,0,.06); padding: 1px 5px; border-radius: 4px; }
 .muted { color: var(--muted); }
-main { max-width: 760px; margin: 0 auto; padding: 0 16px 48px; outline: none; }
+main { max-width: 960px; margin: 0 auto; padding: 0 var(--gut) 48px; outline: none; }
 
 /* Top bar */
 .topbar {
   position: sticky; top: 0; z-index: 10;
   display: flex; align-items: center; justify-content: space-between;
-  /* side padding lines the bar up with the 1120px home column */
-  padding: 12px max(16px, calc((100% - 1120px) / 2 + 16px)); background: rgba(255,255,255,.86); backdrop-filter: saturate(180%) blur(12px); color: var(--ink); border-bottom: 1px solid var(--line);
+  padding: 12px var(--gut); background: rgba(255,255,255,.86); backdrop-filter: saturate(180%) blur(12px); color: var(--ink); border-bottom: 1px solid var(--line);
 }
 .logo { display: flex; align-items: center; }
 .logo img { display: block; height: 30px; width: auto; }
@@ -73,7 +73,7 @@ nav { display: flex; align-items: center; gap: 14px; }
 
 /* Home */
 [hidden] { display: none !important; }
-main.wide { max-width: 1120px; }
+main.wide { max-width: none; }
 main.wide .section-head { margin: 64px 0 20px; }
 main.wide .section-head h2 { font-size: clamp(1.8rem, 4.4vw, 2.6rem); letter-spacing: -0.02em; margin: 0; }
 .eyebrow { display: block; font: 700 .78rem Inter, sans-serif; letter-spacing: .12em; text-transform: uppercase; color: var(--green); margin-bottom: 6px; }
@@ -83,7 +83,7 @@ a:hover > .arr, a:hover .game-top .arr, a:hover .feature-cta .arr { transform: t
 /* Hero: the flyer's layout, dark headline on a bright sky with the sports scene underneath */
 .hero {
   position: relative; overflow: hidden; isolation: isolate;
-  margin: 0 -16px; padding: 40px 20px 300px;
+  margin: 0 calc(-1 * var(--gut)); padding: 40px var(--gut) 300px;
   background: #fff7ec; color: var(--ink);
   border-radius: 0 0 32px 32px;
 }
@@ -106,10 +106,13 @@ a:hover > .arr, a:hover .game-top .arr, a:hover .feature-cta .arr { transform: t
 .hero-art { display: none; position: relative; }
 .hero-art:not(:empty)::before { content: ""; position: absolute; inset: 0; border-radius: 22px; background: #fff; transform: rotate(4deg) translate(10px, 8px); box-shadow: 0 20px 40px rgba(0,0,0,.25); }
 @media (min-width: 900px) {
-  .hero { display: grid; grid-template-columns: 1.15fr .85fr; align-items: center; gap: 48px; margin: 20px 0 0; padding: 72px 56px 120px; border-radius: 32px; }
-  .hero::before { background-position: center 72%; background-size: cover; }
+  .hero { display: grid; grid-template-columns: 1.15fr .85fr; align-items: center; gap: 48px; min-height: min(76vh, 780px); padding: 72px var(--gut) 120px; }
+  .hero { background: #fff; }
+  /* photo keeps its own shape on the right and fades out on its left edge, so it never stretches on very wide screens */
+  .hero::before { inset: 0 0 0 auto; height: 100%; max-width: 100%; aspect-ratio: 1054 / 635; background-position: center bottom; background-size: cover;
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 45%); mask-image: linear-gradient(90deg, transparent, #000 45%); }
   .hero::after { background: linear-gradient(90deg, #fff 0%, rgba(255,255,255,.93) 40%, rgba(255,255,255,0) 72%); }
-  .hero-art { display: block; }
+  .hero-art { display: block; width: 100%; max-width: 460px; justify-self: center; }
 }
 @keyframes rise { from { opacity: 0; transform: translateY(14px); } }
 .hero-copy > * { animation: rise .6s cubic-bezier(.2,.7,.2,1) both; }
@@ -135,7 +138,7 @@ a:hover > .arr, a:hover .game-top .arr, a:hover .feature-cta .arr { transform: t
 .stats div + div { border-left: 1px solid var(--line); }
 .stats b { display: block; font: italic 900 1.8rem Archivo, Inter, sans-serif; letter-spacing: -0.02em; line-height: 1.1; color: var(--green); }
 .stats span { font-size: .82rem; font-weight: 600; color: var(--ink-2); }
-@media (min-width: 900px) { .stats { margin: -44px 56px 0; } .stats div { padding: 22px; } .stats b { font-size: 2.4rem; } }
+@media (min-width: 900px) { .stats { margin: -44px 0 0; } .stats div { padding: 22px; } .stats b { font-size: 2.4rem; } }
 
 .browse { display: flex; flex-direction: column; gap: 16px; }
 #home-map-wrap:empty { display: none; }
@@ -144,7 +147,7 @@ a:hover > .arr, a:hover .game-top .arr, a:hover .feature-cta .arr { transform: t
   .browse { flex-direction: row; align-items: flex-start; }
   #home-map-wrap, #game-list { flex: 1; min-width: 0; }
   #home-map-wrap { position: sticky; top: 84px; }
-  #home-map-wrap .map-home { height: 460px; }
+  #home-map-wrap .map-home { height: min(70vh, 640px); }
 }
 
 .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
@@ -255,7 +258,7 @@ textarea { min-height: 80px; resize: vertical; }
 .loading { text-align: center; padding: 40px; color: var(--muted); }
 
 /* Footer & toast */
-.footer { max-width: 1120px; margin: 0 auto; padding: 28px 16px 40px; font-size: .88rem; border-top: 1px solid var(--line); }
+.footer { padding: 28px var(--gut) 40px; font-size: .88rem; border-top: 1px solid var(--line); }
 .footer-top { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
 .footer nav a { color: var(--ink); text-decoration: none; font-weight: 600; font-size: .9rem; }
 .footer p { margin: 4px 0; }
