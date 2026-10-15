@@ -95,7 +95,6 @@ a:hover > .arr, a:hover .game-top .arr, a:hover .feature-cta .arr { transform: t
 @keyframes pulse { from { box-shadow: 0 0 0 0 rgba(10,90,56,.5); } to { box-shadow: 0 0 0 10px rgba(10,90,56,0); } }
 .hero h1 { font-size: clamp(3rem, 13vw, 5.6rem); font-weight: 900; letter-spacing: -0.035em; line-height: .92; margin-bottom: 14px; }
 .hero h1 em { color: var(--green); }
-.hero-tag { font: 800 clamp(1.25rem, 4.6vw, 1.7rem) Archivo, Inter, sans-serif; color: var(--green); letter-spacing: -0.01em; margin: 0 0 10px; }
 .hero p { font-size: 1.12rem; font-weight: 600; max-width: 34ch; margin: 0 0 26px; }
 .hero .btn-row { align-items: center; gap: 14px 24px; }
 .hero .btn-lg { box-shadow: 0 12px 28px rgba(10,90,56,.35); }
