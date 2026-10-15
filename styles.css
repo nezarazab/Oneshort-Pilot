@@ -41,7 +41,9 @@ main { max-width: 960px; margin: 0 auto; padding: 0 var(--gut) 48px; outline: no
   padding: 12px var(--gut); background: rgba(255,255,255,.86); backdrop-filter: saturate(180%) blur(12px); color: var(--ink); border-bottom: 1px solid var(--line);
 }
 .logo { display: flex; align-items: center; }
-.logo img { display: block; height: 30px; width: auto; }
+.logo img { display: block; height: 34px; width: auto; } /* 34px leaves room for "Host a game" + avatar on a 375px phone */
+@media (min-width: 700px) { .logo img { height: 46px; } }
+.footer-top img { display: block; height: 40px; width: auto; }
 nav { display: flex; align-items: center; gap: 14px; }
 .nav-link { color: var(--ink); text-decoration: none; font-weight: 500; opacity: .85; }
 .nav-link:hover { opacity: 1; }

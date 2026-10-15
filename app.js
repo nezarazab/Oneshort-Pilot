@@ -268,7 +268,7 @@
       <section class="hero">
         <div class="hero-copy">
           <span class="pill-badge"><i></i>Live in Eindhoven · Pilot</span>
-          <h1>Never be a player <em>short.</em></h1>
+          <h1>Never be a player short <em>again.</em></h1>
           <p>Meet players and join games at your level in your favorite sport.</p>
           <div class="btn-row">
             <a class="btn btn-lg" href="#games" data-scroll="games"><span id="hero-find">Find a game</span> <span class="arr">→</span></a>
