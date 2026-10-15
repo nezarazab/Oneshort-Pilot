@@ -127,7 +127,9 @@ a:hover > .arr, a:hover .game-top .arr, a:hover .feature-cta .arr { transform: t
 .feature-label { font: 700 .75rem Inter, sans-serif; letter-spacing: .12em; text-transform: uppercase; color: var(--green); }
 .feature-row { display: flex; gap: 14px; align-items: center; margin: 14px 0 12px; }
 .feature .when { font-size: 1.3rem; margin-top: 8px; }
-.feature-cta { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); font-weight: 700; }
+/* the card's call to action: a solid button so it reads as the next step, not a footnote */
+.feature-cta { display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 18px; padding: 14px 20px; border-radius: 999px; background: var(--green); color: #fff; font-size: 1.05rem; font-weight: 800; box-shadow: 0 10px 24px rgba(0,0,0,.28); transition: transform .15s ease, box-shadow .15s ease; }
+.feature:hover .feature-cta { transform: translateY(-2px); box-shadow: 0 14px 30px rgba(0,0,0,.34); }
 .date-tile { flex: none; display: grid; justify-items: center; align-content: center; width: 58px; height: 68px; border-radius: 14px; background: var(--green); color: #fff; line-height: 1; }
 .date-tile span { font: 700 .66rem Inter, sans-serif; letter-spacing: .1em; text-transform: uppercase; opacity: .85; }
 .date-tile b { font: italic 900 1.5rem Archivo, Inter, sans-serif; margin: 4px 0 3px; }
@@ -337,7 +339,7 @@ details summary { cursor: pointer; font-weight: 600; color: var(--green); }
 .sport-bg .spots-bar { background: rgba(255,255,255,.35); }
 .sport-bg .spots-bar i { background: #fff; }
 .sport-bg .full { color: rgba(255,255,255,.8); }
-.sport-bg .feature-cta { border-top-color: rgba(255,255,255,.3); }
+.sport-bg .feature-cta { background: #fff; color: var(--c); }
 .game-card.sport-bg:hover { box-shadow: 0 16px 36px rgba(14,26,18,.28); }
 .sport-football { --c: #15663a; --fade: rgba(21,102,58,0); --img: url(assets/sport-football.jpg); }
 .sport-basketball { --c: #b1501a; --fade: rgba(177,80,26,0); --img: url(assets/sport-basketball.jpg); }
