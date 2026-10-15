@@ -9,7 +9,7 @@ window.OneShortMock = (function () {
   const fail = (m) => { throw new Error(m); };
   const currentUid = () => { try { return localStorage.getItem(SESSION); } catch { return null; } };
   const filled = (db, g) => db.requests.filter((r) => r.game_id === g && r.status === "approved").length;
-  const pub = (db, g) => ({ id: g.id, sport: g.sport, location: g.location, starts_at: g.starts_at, spots_needed: g.spots_needed, level: g.level, host_name: g.host_name, cost_per_player: g.cost_per_player, notes: g.notes, spots_filled: filled(db, g.id), status: g.status, lat: g.lat ?? null, lng: g.lng ?? null });
+  const pub = (db, g) => ({ id: g.id, sport: g.sport, location: g.location, starts_at: g.starts_at, spots_needed: g.spots_needed, level: g.level, host_name: g.host_name, cost_per_player: g.cost_per_player, notes: g.notes, spots_filled: filled(db, g.id), status: g.status, lat: g.lat ?? null, lng: g.lng ?? null, host_position: g.host_position || null });
   const contactOf = (db, id) => { const p = db.profiles.find((x) => x.id === id); const u = db.users.find((x) => x.id === id); return (p && p.phone) || (u && u.email); };
   const meOrFail = (db) => {
     const id = currentUid(); if (!id) fail("Please log in first.");
@@ -47,7 +47,7 @@ window.OneShortMock = (function () {
     post_game(p, db) {
       const me = meOrFail(db);
       if (new Date(p.p_starts_at) < Date.now()) fail("The game time must be in the future.");
-      const g = { id: uid(), host_token: uid(), host_id: me.id, sport: p.p_sport, location: p.p_location, starts_at: p.p_starts_at, spots_needed: p.p_spots, level: p.p_level, host_name: me.name, host_contact: contactOf(db, me.id), cost_per_player: p.p_cost || null, notes: p.p_notes || null, lat: p.p_lat ?? null, lng: p.p_lng ?? null, status: "open", created_at: new Date().toISOString() };
+      const g = { id: uid(), host_token: uid(), host_id: me.id, sport: p.p_sport, location: p.p_location, starts_at: p.p_starts_at, spots_needed: p.p_spots, level: p.p_level, host_name: me.name, host_contact: contactOf(db, me.id), cost_per_player: p.p_cost || null, notes: p.p_notes || null, lat: p.p_lat ?? null, lng: p.p_lng ?? null, host_position: p.p_position || null, status: "open", created_at: new Date().toISOString() };
       db.games.push(g); return g.id;
     },
     join_game(p, db) {
@@ -58,7 +58,7 @@ window.OneShortMock = (function () {
       if (new Date(g.starts_at) < Date.now()) fail("This game has already started.");
       if (filled(db, g.id) >= g.spots_needed) fail("Sorry, this game is already full.");
       if (db.requests.some((r) => r.game_id === g.id && r.player_id === me.id && ["pending", "approved"].includes(r.status))) fail("You already requested a spot in this game.");
-      const r = { id: uid(), player_token: uid(), player_id: me.id, game_id: g.id, player_name: me.name, player_contact: contactOf(db, me.id), level: p.p_level, message: p.p_message || null, status: "pending", attended: null, created_at: new Date().toISOString(), decided_at: null };
+      const r = { id: uid(), player_token: uid(), player_id: me.id, game_id: g.id, player_name: me.name, player_contact: contactOf(db, me.id), level: p.p_level, position: p.p_position || null, message: p.p_message || null, status: "pending", attended: null, created_at: new Date().toISOString(), decided_at: null };
       db.requests.push(r); return r.id;
     },
     guest_request(p, db) {
@@ -71,7 +71,7 @@ window.OneShortMock = (function () {
       if (new Date(g.starts_at) < Date.now()) fail("This game has already started.");
       if (filled(db, g.id) >= g.spots_needed) fail("Sorry, this game is already full.");
       if (db.requests.some((r) => r.game_id === g.id && (r.player_contact || "").toLowerCase() === phone.toLowerCase() && ["pending", "approved"].includes(r.status))) fail("You already requested a spot in this game.");
-      const r = { id: uid(), player_token: uid(), player_id: null, game_id: g.id, player_name: name, player_contact: phone, level: p.p_level, message: (p.p_message || "").trim() || null, status: "pending", attended: null, created_at: new Date().toISOString(), decided_at: null };
+      const r = { id: uid(), player_token: uid(), player_id: null, game_id: g.id, player_name: name, player_contact: phone, level: p.p_level, position: p.p_position || null, message: (p.p_message || "").trim() || null, status: "pending", attended: null, created_at: new Date().toISOString(), decided_at: null };
       db.requests.push(r); return { id: r.id, token: r.player_token };
     },
     my_activity(_, db) {

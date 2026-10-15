@@ -103,11 +103,15 @@
   };
   const isPast = (iso) => new Date(iso) < new Date();
   // Sport is free text, so match loosely; anything unknown gets the generic players photo.
-  const sportClass = (sport) => {
+  const sportKey = (sport) => {
     const s = String(sport).toLowerCase();
     const hit = [["foot", "football"], ["soccer", "football"], ["futsal", "football"], ["basket", "basketball"], ["volley", "volleyball"], ["padel", "padel"], ["tennis", "tennis"]].find(([word]) => s.includes(word));
-    return "sport-bg" + (hit ? ` sport-${hit[1]}` : "");
+    return hit ? hit[1] : null;
   };
+  const sportClass = (sport) => "sport-bg" + (sportKey(sport) ? ` sport-${sportKey(sport)}` : "");
+  // Football only: hosts and players say where they play.
+  const POSITIONS = ["Goalkeeper", "Defender", "Midfielder", "Attacker", "Any position"];
+  const positionField = (id) => `<div class="field"><label for="${id}">Your position</label><select id="${id}">${POSITIONS.map((p) => `<option ${p === "Any position" ? "selected" : ""}>${p}</option>`).join("")}</select></div>`;
   const dateTile = (iso) => {
     const [dow, day, mon] = fmtWhen(iso).split(" · ")[0].replace(",", "").split(" ");
     return `<div class="date-tile"><span>${dow}</span><b>${day}</b><span>${mon}</span></div>`;
@@ -242,7 +246,7 @@
     const costTag = cost ? `<span class="tag">${esc(/^\d+([.,]\d{1,2})?$/.test(cost) ? `€${cost} / player` : cost)}</span>` : "";
     return `<div class="meta"><div class="loc">${PIN}<div>${loc}</div></div>
       <div class="tags"><span class="tag level-${esc(String(g.level).toLowerCase())}">${esc(g.level)}</span>${costTag}</div>
-      <div class="host">Hosted by <b>${esc(g.host_name)}</b></div></div>`;
+      <div class="host">Hosted by <b>${esc(g.host_name)}</b>${g.host_position ? ` · ${esc(g.host_position)}` : ""}</div></div>`;
   }
 
   // ---------- Views ----------
@@ -366,6 +370,7 @@
           <input id="sport" name="sport" required maxlength="40" placeholder="e.g. Football" autocomplete="off" value="${esc(me.profile.fav_sport)}" />
           <div class="chips">${["Football", "Padel", "Basketball", "Volleyball", "Tennis"].map((s) => `<button type="button" class="chip" data-sport="${s}">${s}</button>`).join("")}</div>
         </div>
+        <div id="pos-wrap" hidden>${positionField("hpos")}</div>
         <div class="grid-2">
           <div class="field"><label for="when">Date & time</label><input id="when" name="when" type="datetime-local" required value="${defaultWhen}" /></div>
           <div class="field"><label for="spots">Players needed</label><input id="spots" name="spots" type="number" min="1" max="30" value="2" required /></div>
@@ -388,7 +393,10 @@
         <button class="btn btn-block" type="submit">Post game</button>
       </form>`);
 
-    app.querySelectorAll("[data-sport]").forEach((b) => b.addEventListener("click", () => { document.getElementById("sport").value = b.dataset.sport; }));
+    const syncPos = () => { document.getElementById("pos-wrap").hidden = sportKey(document.getElementById("sport").value) !== "football"; };
+    app.querySelectorAll("[data-sport]").forEach((b) => b.addEventListener("click", () => { document.getElementById("sport").value = b.dataset.sport; syncPos(); }));
+    document.getElementById("sport").addEventListener("input", syncPos);
+    syncPos();
 
     // Map picker
     let pin = null, autoName = "";
@@ -461,6 +469,7 @@
           p_sport: v("sport"), p_location: v("location"), p_starts_at: when.toISOString(), p_spots: spots,
           p_level: v("level"), p_cost: v("cost") || null, p_notes: v("notes") || null,
           p_lat: pin ? pin.lat : null, p_lng: pin ? pin.lng : null,
+          p_position: sportKey(v("sport")) === "football" ? document.getElementById("hpos").value : null,
         });
         viewHostCreated(id, { sport: v("sport"), starts_at: when.toISOString(), location: v("location"), spots, lat: pin ? pin.lat : null, lng: pin ? pin.lng : null });
       } catch (e) {
@@ -522,7 +531,7 @@
       if (bad) { errBox.innerHTML = `<div class="form-error">${bad}</div>`; return; }
       btn.disabled = true; btn.textContent = "Sending…";
       try {
-        const r = await rpc("guest_request", { p_game: g.id, p_name: name, p_phone: phone, p_level: document.getElementById("plevel").value, p_message: document.getElementById("pmsg").value.trim() || null });
+        const r = await rpc("guest_request", { p_game: g.id, p_name: name, p_phone: phone, p_level: document.getElementById("plevel").value, p_message: document.getElementById("pmsg").value.trim() || null, p_position: document.getElementById("ppos")?.value || null });
         addMine("requests", { id: r.id, token: r.token, sport: g.sport, starts_at: g.starts_at });
         location.hash = `#/request/${r.id}/${r.token}?new=1`;
       } catch (e) {
@@ -537,7 +546,7 @@
       const btn = form.querySelector("[type=submit]"), errBox = document.getElementById("form-error");
       btn.disabled = true; btn.textContent = "Sending…";
       try {
-        const id = await rpc("join_game", { p_game: g.id, p_level: document.getElementById("plevel").value, p_message: document.getElementById("pmsg").value.trim() || null });
+        const id = await rpc("join_game", { p_game: g.id, p_level: document.getElementById("plevel").value, p_message: document.getElementById("pmsg").value.trim() || null, p_position: document.getElementById("ppos")?.value || null });
         location.hash = `#/request/${id}?new=1`;
       } catch (e) {
         errBox.innerHTML = `<div class="form-error">${esc(e.message)}</div>`;
@@ -562,6 +571,7 @@
         <div class="field"><label for="gphone">Phone number <span class="hint">(WhatsApp)</span></label><input id="gphone" type="tel" maxlength="20" autocomplete="tel" placeholder="06 12345678" required /></div>
         <div class="field"><label for="plevel">Your level in ${esc(g.sport)}</label>
           <select id="plevel">${["Beginner", "Intermediate", "Advanced"].map((l) => `<option ${l === "Intermediate" ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+        ${sportKey(g.sport) === "football" ? positionField("ppos") : ""}
         <div class="field"><label for="pmsg">Message to host <span class="hint">(optional)</span></label><textarea id="pmsg" maxlength="300" placeholder="e.g. I usually play as a defender"></textarea></div>
         <button class="btn btn-block" type="submit">Request spot</button>
       </form>`;
@@ -575,6 +585,7 @@
         <div id="form-error"></div>
         <div class="field"><label for="plevel">Your level in ${esc(g.sport)}</label>
           <select id="plevel">${["Beginner", "Intermediate", "Advanced"].map((l) => `<option ${l === lvl ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+        ${sportKey(g.sport) === "football" ? positionField("ppos") : ""}
         <div class="field"><label for="pmsg">Message to host <span class="hint">(optional)</span></label><textarea id="pmsg" maxlength="300" placeholder="e.g. I usually play as a defender"></textarea></div>
         <button class="btn btn-block" type="submit">Request spot</button>
       </form>`;
@@ -637,7 +648,7 @@
 
     const reqHtml = reqs.length ? reqs.map((r) => `
       <div class="req">
-        <div class="req-head"><span class="req-name">${esc(r.player_name)} <span class="hint">· ${esc(r.level)}</span></span><span class="status ${r.status}">${r.status}</span></div>
+        <div class="req-head"><span class="req-name">${esc(r.player_name)} <span class="hint">· ${esc(r.level)}${r.position ? ` · ${esc(r.position)}` : ""}</span></span><span class="status ${r.status}">${r.status}</span></div>
         ${r.status === "approved" ? `<div class="hint" style="margin-top:4px">Contact: ${contactLink(r.player_contact)}</div>` : ""}
         ${r.message ? `<div class="req-msg">${esc(r.message)}</div>` : ""}
         ${!cancelled && !past && r.status === "pending" ? `<div class="btn-row">
@@ -920,7 +931,7 @@
           </div>
           ${g.requests.length ? `<details style="margin-top:10px"><summary>${g.requests.length} request${g.requests.length > 1 ? "s" : ""}</summary>
             ${g.requests.map((r) => `<div class="req">
-              <div class="req-head"><span class="req-name">${esc(r.player_name)} <span class="hint">· ${esc(r.level)} · ${esc(r.player_contact)}</span></span><span class="status ${esc(r.status)}">${esc(r.status)}</span></div>
+              <div class="req-head"><span class="req-name">${esc(r.player_name)} <span class="hint">· ${esc(r.level)}${r.position ? ` · ${esc(r.position)}` : ""} · ${esc(r.player_contact)}</span></span><span class="status ${esc(r.status)}">${esc(r.status)}</span></div>
               ${r.message ? `<div class="req-msg">${esc(r.message)}</div>` : ""}
               ${r.status === "removed"
                 ? `<button class="btn btn-ghost btn-small" data-req="${r.id}" data-remove="false">Restore request</button>`
