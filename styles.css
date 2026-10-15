@@ -192,9 +192,24 @@ a:hover > .arr, a:hover .game-top .arr, a:hover .feature-cta .arr { transform: t
 .game-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 8px; }
 .sport-chip { background: var(--ink); color: var(--sun); font-weight: 700; font-size: .85rem; padding: 4px 12px; border-radius: 999px; }
 .when { font-family: Archivo, Inter, sans-serif; font-weight: 800; font-size: 1.15rem; margin: 2px 0; }
-.meta { color: var(--ink-2); font-size: .95rem; display: flex; flex-wrap: wrap; gap: 2px 8px; }
-.meta span:first-child, .meta span:last-child { flex-basis: 100%; } /* location and host get their own lines, so no row starts with a dot */
-.meta span + span + span:not(:last-child)::before { content: "·"; margin-right: 8px; color: var(--muted); }
+.meta { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; color: var(--ink-2); font-size: .95rem; }
+.loc { display: flex; gap: 6px; align-items: flex-start; }
+.loc > div { min-width: 0; }
+.loc a { color: inherit; text-decoration: none; }
+.loc a:hover .venue { text-decoration: underline; }
+.pin { flex: none; width: 18px; height: 18px; margin-top: 2px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linejoin: round; color: var(--green); }
+.venue { display: block; font-weight: 700; color: var(--ink); }
+.addr { display: block; font-size: .85rem; color: var(--muted); }
+/* cards stay one tidy line each; the game page shows the full address */
+.game-card .venue, .game-card .addr, .feature .venue, .feature .addr { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; background: #fff; border: 1px solid var(--line); color: var(--ink); font-size: .8rem; font-weight: 700; }
+/* level colour carries meaning (how hard the game is), so it is the only coloured detail */
+.tag[class*="level-"]::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+.tag.level-beginner::before { background: #22a35a; }
+.tag.level-intermediate::before { background: #f0a000; }
+.tag.level-advanced::before { background: #e0452b; }
+.host b { color: var(--ink); }
 .spots { margin-top: 12px; }
 .spots-bar { height: 8px; border-radius: 99px; background: var(--line); overflow: hidden; }
 .spots-bar i { display: block; height: 100%; background: var(--green); border-radius: 99px; }
@@ -311,7 +326,9 @@ details summary { cursor: pointer; font-weight: 600; color: var(--green); }
 .sport-bg { --c: var(--green); --fade: rgba(10,90,56,0); --img: url(assets/sport-any.jpg); border: 0; color: #fff;
   background: linear-gradient(90deg, var(--c) 46%, var(--fade) 88%), var(--img) right center / auto 135% no-repeat, var(--c); }
 .sport-bg .when, .sport-bg .meta, .sport-bg .feature-label, .sport-bg .game-top .arr { color: #fff; }
-.sport-bg .meta span::before { color: inherit !important; }
+.sport-bg .venue, .sport-bg .host b, .sport-bg .pin { color: #fff; }
+.sport-bg .addr, .sport-bg .host { color: rgba(255,255,255,.85); }
+.sport-bg .tag { border-color: transparent; text-shadow: none; }
 .sport-bg .meta { max-width: 85%; text-shadow: 0 1px 2px rgba(0,0,0,.25); }
 .sport-bg .sport-chip { background: rgba(255,255,255,.22); color: #fff; }
 .sport-bg .date-tile { background: #fff; color: var(--ink); }

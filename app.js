@@ -232,9 +232,17 @@
     return `<div class="spots"><div class="spots-bar"><i style="width:${pct}%"></i></div>
       <div class="spots-text ${left ? "" : "full"}">${left ? `${left} of ${g.spots_needed} spot${g.spots_needed > 1 ? "s" : ""} left` : "Full"}</div></div>`;
   }
+  const PIN = `<svg class="pin" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg>`;
   function gameMeta(g, linkLocation = true) {
-    const loc = hasPin(g) && linkLocation ? `<a href="${gmapsUrl(g)}" target="_blank" rel="noopener">${esc(g.location)}</a>` : esc(g.location);
-    return `<div class="meta"><span>${loc}</span><span>${esc(g.level)}</span>${g.cost_per_player ? `<span>Cost: ${esc(g.cost_per_player)}</span>` : ""}<span>Hosted by ${esc(g.host_name)}</span></div>`;
+    // Location is free text: the part before the first comma is usually the venue, the rest the street address.
+    const [venue, ...rest] = String(g.location).split(",");
+    const place = `<span class="venue">${esc(venue.trim())}</span>${rest.length ? `<span class="addr">${esc(rest.join(",").trim())}</span>` : ""}`;
+    const loc = hasPin(g) && linkLocation ? `<a href="${gmapsUrl(g)}" target="_blank" rel="noopener">${place}</a>` : place;
+    const cost = String(g.cost_per_player || "").trim();
+    const costTag = cost ? `<span class="tag">${esc(/^\d+([.,]\d{1,2})?$/.test(cost) ? `€${cost} / player` : cost)}</span>` : "";
+    return `<div class="meta"><div class="loc">${PIN}<div>${loc}</div></div>
+      <div class="tags"><span class="tag level-${esc(String(g.level).toLowerCase())}">${esc(g.level)}</span>${costTag}</div>
+      <div class="host">Hosted by <b>${esc(g.host_name)}</b></div></div>`;
   }
 
   // ---------- Views ----------
