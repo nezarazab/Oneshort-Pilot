@@ -512,6 +512,24 @@
     if (login) login.addEventListener("click", (e) => { e.preventDefault(); requireAccount(`#/game/${g.id}`, "Log in or create an account to request a spot."); });
     const signup = document.getElementById("signup-to-join");
     if (signup) signup.addEventListener("click", () => ss.set(NEXT, `#/game/${g.id}`));
+    const guestStart = document.getElementById("guest-start"), guestForm = document.getElementById("guest-form");
+    if (guestStart) guestStart.addEventListener("click", () => { document.getElementById("join-card").hidden = true; guestForm.hidden = false; document.getElementById("gname").focus(); });
+    if (guestForm) guestForm.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const btn = guestForm.querySelector("[type=submit]"), errBox = document.getElementById("form-error");
+      const name = document.getElementById("gname").value.trim(), phone = document.getElementById("gphone").value.trim();
+      const bad = !name ? "Please enter your name." : !/^\+?[0-9 ()-]+$/.test(phone) || phone.replace(/\D/g, "").length < 9 || phone.replace(/\D/g, "").length > 15 ? "Please enter a valid phone number." : "";
+      if (bad) { errBox.innerHTML = `<div class="form-error">${bad}</div>`; return; }
+      btn.disabled = true; btn.textContent = "Sending…";
+      try {
+        const r = await rpc("guest_request", { p_game: g.id, p_name: name, p_phone: phone, p_level: document.getElementById("plevel").value, p_message: document.getElementById("pmsg").value.trim() || null });
+        addMine("requests", { id: r.id, token: r.token, sport: g.sport, starts_at: g.starts_at });
+        location.hash = `#/request/${r.id}/${r.token}?new=1`;
+      } catch (e) {
+        errBox.innerHTML = `<div class="form-error">${esc(e.message)}</div>`;
+        btn.disabled = false; btn.textContent = "Request spot";
+      }
+    });
     const form = document.getElementById("req-form");
     if (!form) return;
     form.addEventListener("submit", async (ev) => {
@@ -532,8 +550,23 @@
     if (g.is_host) return `<div class="card"><h2>This is your game</h2><p class="muted">Approve players and see who's coming on your game page.</p><a class="btn" href="#/manage/${g.id}">Manage game →</a></div>`;
     if (g.my_request_id && ["pending", "approved"].includes(g.my_request_status)) return `<div class="card ${g.my_request_status === "approved" ? "success" : ""}"><h2>${g.my_request_status === "approved" ? "You're in! ✅" : "Request sent"}</h2><p class="muted">${g.my_request_status === "approved" ? "See the host's contact on your request page." : `Waiting for ${esc(g.host_name)} to respond.`}</p><a class="btn" href="#/request/${g.my_request_id}">View my request →</a></div>`;
     if (closed) return `<div class="card empty"><h3>${reason}</h3><a class="btn" href="#/">See other games</a></div>`;
-    if (!me || !me.profile) return `<div class="card"><h2>Request a spot</h2><p class="muted">Create a free account to request a spot. It takes 30 seconds.</p>
-      <div class="btn-row"><a class="btn" id="signup-to-join" href="#/signup">Sign up</a><a class="btn btn-ghost" id="login-to-join" href="#/login">Log in</a></div></div>`;
+    if (!me) return `<div class="card" id="join-card"><h2>Request a spot</h2>
+      <p class="muted">Continue as a guest with just your name and phone number, or use an account to keep all your games in one place.</p>
+      <div class="btn-row"><button class="btn" type="button" id="guest-start">Continue as guest</button><a class="btn btn-ghost" id="signup-to-join" href="#/signup">Sign up</a></div>
+      <p class="hint" style="margin:12px 0 0">Already have an account? <a id="login-to-join" href="#/login">Log in</a></p></div>
+      <form class="card" id="guest-form" hidden novalidate>
+        <h2>Request as a guest</h2>
+        <p class="muted">Your phone number is only shared with ${esc(g.host_name)}, so they can reach you once they approve you.</p>
+        <div id="form-error"></div>
+        <div class="field"><label for="gname">Your name</label><input id="gname" maxlength="60" autocomplete="name" required /></div>
+        <div class="field"><label for="gphone">Phone number <span class="hint">(WhatsApp)</span></label><input id="gphone" type="tel" maxlength="20" autocomplete="tel" placeholder="06 12345678" required /></div>
+        <div class="field"><label for="plevel">Your level in ${esc(g.sport)}</label>
+          <select id="plevel">${["Beginner", "Intermediate", "Advanced"].map((l) => `<option ${l === "Intermediate" ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+        <div class="field"><label for="pmsg">Message to host <span class="hint">(optional)</span></label><textarea id="pmsg" maxlength="300" placeholder="e.g. I usually play as a defender"></textarea></div>
+        <button class="btn btn-block" type="submit">Request spot</button>
+      </form>`;
+    if (!me.profile) return `<div class="card"><h2>Request a spot</h2><p class="muted">Finish your profile to request a spot. It takes 30 seconds.</p>
+      <div class="btn-row"><a class="btn" id="login-to-join" href="#/me">Finish profile</a></div></div>`;
     const sameSport = me.profile.fav_sport.trim().toLowerCase() === String(g.sport).trim().toLowerCase();
     const lvl = sameSport ? me.profile.level : "Intermediate";
     return `<form class="card" id="req-form" novalidate>

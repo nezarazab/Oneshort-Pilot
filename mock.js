@@ -61,6 +61,19 @@ window.OneShortMock = (function () {
       const r = { id: uid(), player_token: uid(), player_id: me.id, game_id: g.id, player_name: me.name, player_contact: contactOf(db, me.id), level: p.p_level, message: p.p_message || null, status: "pending", attended: null, created_at: new Date().toISOString(), decided_at: null };
       db.requests.push(r); return r.id;
     },
+    guest_request(p, db) {
+      const name = (p.p_name || "").trim(), phone = (p.p_phone || "").trim(), digits = phone.replace(/\D/g, "");
+      if (!name || name.length > 60) fail("Please enter your name.");
+      if (digits.length < 9 || digits.length > 15 || !/^\+?[0-9 ()-]+$/.test(phone)) fail("Please enter a valid phone number.");
+      if (!["Beginner", "Intermediate", "Advanced"].includes(p.p_level)) fail("Pick your level.");
+      const g = db.games.find((x) => x.id === p.p_game);
+      if (!g || g.status !== "open") fail("This game is not available.");
+      if (new Date(g.starts_at) < Date.now()) fail("This game has already started.");
+      if (filled(db, g.id) >= g.spots_needed) fail("Sorry, this game is already full.");
+      if (db.requests.some((r) => r.game_id === g.id && (r.player_contact || "").toLowerCase() === phone.toLowerCase() && ["pending", "approved"].includes(r.status))) fail("You already requested a spot in this game.");
+      const r = { id: uid(), player_token: uid(), player_id: null, game_id: g.id, player_name: name, player_contact: phone, level: p.p_level, message: (p.p_message || "").trim() || null, status: "pending", attended: null, created_at: new Date().toISOString(), decided_at: null };
+      db.requests.push(r); return { id: r.id, token: r.player_token };
+    },
     my_activity(_, db) {
       const me = currentUid(); if (!me) return { hosting: [], requests: [] };
       const byTime = (a, b) => new Date(a.starts_at) - new Date(b.starts_at);
