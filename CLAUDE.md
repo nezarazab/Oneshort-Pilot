@@ -37,7 +37,7 @@ Key RPCs (current versions live in the latest file that defines them):
 - Host/player (owner = logged-in user **or** legacy secret token): `host_view`, `host_decide`, `host_mark_attendance`, `host_cancel_game`, `request_status`, `withdraw_request` — all take a `p_token` that is `null` for logged-in use.
 - Admin (`admin.sql`, password hash in `admin_settings`): `admin_overview`, `admin_set_game`, `admin_set_request`. Admin page: `/#/admin`.
 - Legacy guest functions `create_game` / `request_spot` still exist but execute is revoked (accounts are required now). Old secret links (`#/manage/<id>/<token>`, `#/request/<id>/<token>`) must keep working.
-- Analytics: GA4 loads only when `GA_ID` is set in `config.js`; `track()` sends events (sign_up, game_posted, join_request_sent, request_accepted, attendance_marked); `trackPage()` sends one clean page_view per route (no IDs/tokens).
+- Analytics: GA4 loads only when `GA_ID` is set in `config.js`; `track()` sends events (sign_up, game_posted, join_request_sent, request_accepted, request_declined, attendance_marked); `trackPage()` sends one clean page_view per route (no IDs/tokens, /admin not tracked). Never send names, emails or phone numbers to GA.
 - Statuses: games `open|cancelled|removed`; requests `pending|approved|declined|withdrawn|removed`.
 - Pilot metrics: `supabase/pilot_stats.sql` (games posted, distinct hosts, % filled, response time, show-up rate, returning players).
 

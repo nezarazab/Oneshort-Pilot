@@ -8,7 +8,8 @@
   const live = !!(cfg.SUPABASE_URL && cfg.SUPABASE_ANON_KEY && window.supabase);
   const client = live ? window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY) : null;
   // ---------- Google Analytics 4 (only when GA_ID is set in config.js) ----------
-  const GA_ID = (cfg.GA_ID || "").trim();
+  // Never send names, emails or phone numbers: only page types and coarse event details.
+  const GA_ID = String(cfg.GA_ID || "").trim();
   if (GA_ID) {
     const s = document.createElement("script");
     s.async = true; s.src = "https://www.googletagmanager.com/gtag/js?id=" + encodeURIComponent(GA_ID);
@@ -16,14 +17,11 @@
     window.dataLayer = window.dataLayer || [];
     window.gtag = function () { window.dataLayer.push(arguments); };
     window.gtag("js", new Date());
-    window.gtag("config", GA_ID, { send_page_view: false }); // page views are sent per route below
+    window.gtag("config", GA_ID, { send_page_view: false }); // page views are sent per route by trackPage()
   }
   function track(name, params) { try { if (GA_ID && window.gtag) window.gtag("event", name, params || {}); } catch {} }
-  function trackPage(routeName) {
-    // one clean URL per page type (no game IDs or secret tokens in analytics)
-    track("page_view", { page_location: location.origin + "/" + (routeName || ""), page_title: "OneShort – " + (routeName || "home") });
-  }
-
+  // One clean URL per page type: no game IDs, request IDs or secret tokens.
+  const trackPage = (routeName) => track("page_view", { page_location: location.origin + "/" + routeName, page_title: "OneShort – " + (routeName || "home") });
   const banner = document.getElementById("demo-banner");
   if (!live && banner) banner.hidden = false;
 
@@ -89,9 +87,9 @@
     if (!nav) return;
     if (me) {
       const initial = esc(((me.profile && me.profile.name) || me.user.email || "?").trim().charAt(0).toUpperCase());
-      nav.innerHTML = `<a href="#/" class="nav-link hide-sm">Games</a><a href="#/host" class="btn btn-small">Host a game</a><a href="#/me" class="avatar" title="My account" aria-label="My account">${initial}</a>`;
+      nav.innerHTML = `<a href="#/" class="nav-link hide-sm">Find games</a><a href="#/host" class="btn btn-small btn-ghost">Host a game</a><a href="#/me" class="avatar" title="My account" aria-label="My account">${initial}</a>`;
     } else {
-      nav.innerHTML = `<a href="#/" class="nav-link hide-sm">Games</a><a href="#/login" class="nav-link">Log in</a><a href="#/signup" class="btn btn-small">Sign up</a>`;
+      nav.innerHTML = `<a href="#/" class="nav-link hide-sm">Find games</a><a href="#/login" class="nav-link">Log in</a><a href="#/signup" class="btn btn-small">Sign up</a>`;
     }
   }
   // Send to login (and come back afterwards). Returns true if the user may continue.
@@ -119,6 +117,20 @@
     return `${day} · ${time}`;
   };
   const isPast = (iso) => new Date(iso) < new Date();
+  // Sport is free text, so match loosely; anything unknown gets the generic players photo.
+  const sportKey = (sport) => {
+    const s = String(sport).toLowerCase();
+    const hit = [["foot", "football"], ["soccer", "football"], ["futsal", "football"], ["basket", "basketball"], ["volley", "volleyball"], ["padel", "padel"], ["tennis", "tennis"]].find(([word]) => s.includes(word));
+    return hit ? hit[1] : null;
+  };
+  const sportClass = (sport) => "sport-bg" + (sportKey(sport) ? ` sport-${sportKey(sport)}` : "");
+  // Football only: hosts and players say where they play.
+  const POSITIONS = ["Goalkeeper", "Defender", "Midfielder", "Attacker", "Any position"];
+  const positionField = (id) => `<div class="field"><label for="${id}">Your position</label><select id="${id}">${POSITIONS.map((p) => `<option ${p === "Any position" ? "selected" : ""}>${p}</option>`).join("")}</select></div>`;
+  const dateTile = (iso) => {
+    const [dow, day, mon] = fmtWhen(iso).split(" · ")[0].replace(",", "").split(" ");
+    return `<div class="date-tile"><span>${dow}</span><b>${day}</b><span>${mon}</span></div>`;
+  };
   function waNumber(contact) {
     if (!contact || contact.includes("@")) return null;
     let n = contact.replace(/[^\d+]/g, "");
@@ -213,7 +225,7 @@
         const left = Math.max(0, g.spots_needed - g.spots_filled);
         const html = `<div class="pop"><span class="sport-chip">${esc(g.sport)}</span>
           <div class="pop-when">${fmtWhen(g.starts_at)}</div>
-          <div class="pop-loc">📍 ${esc(g.location)}</div>
+          <div class="pop-loc">${esc(g.location)}</div>
           <div class="pop-spots">${left ? `${left} spot${left > 1 ? "s" : ""} left` : "Full"} · ${esc(g.level)}</div>
           <a class="btn btn-small pop-btn" href="#/game/${g.id}">View game →</a></div>`;
         L.marker([g.lat, g.lng], { icon: pinIcon(L), title: `${g.sport} · ${fmtWhen(g.starts_at)}` }).addTo(map).bindPopup(html, { maxWidth: 240 });
@@ -229,7 +241,7 @@
   const getMine = () => { try { return JSON.parse(localStorage.getItem(MINE)) || { games: [], requests: [] }; } catch { return { games: [], requests: [] }; } };
   const addMine = (kind, item) => { try { const m = getMine(); m[kind] = [item, ...m[kind].filter((x) => x.id !== item.id)].slice(0, 20); localStorage.setItem(MINE, JSON.stringify(m)); } catch {} };
 
-  const setView = (html) => { app.innerHTML = html; window.scrollTo(0, 0); };
+  const setView = (html) => { app.className = ""; app.innerHTML = html; window.scrollTo(0, 0); };
   const loading = () => setView(`<div class="loading">Loading…</div>`);
   const errorView = (msg) => setView(`<div class="page-title"><h1>Oops</h1></div><div class="card"><p>${esc(msg)}</p><a class="btn" href="#/">Back to games</a></div>`);
 
@@ -239,9 +251,17 @@
     return `<div class="spots"><div class="spots-bar"><i style="width:${pct}%"></i></div>
       <div class="spots-text ${left ? "" : "full"}">${left ? `${left} of ${g.spots_needed} spot${g.spots_needed > 1 ? "s" : ""} left` : "Full"}</div></div>`;
   }
+  const PIN = `<svg class="pin" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg>`;
   function gameMeta(g, linkLocation = true) {
-    const loc = hasPin(g) && linkLocation ? `<a href="${gmapsUrl(g)}" target="_blank" rel="noopener">${esc(g.location)}</a>` : esc(g.location);
-    return `<div class="meta"><span>📍 ${loc}</span><span>🎯 ${esc(g.level)}</span>${g.cost_per_player ? `<span>💶 ${esc(g.cost_per_player)}</span>` : ""}<span>👤 ${esc(g.host_name)}</span></div>`;
+    // Location is free text: the part before the first comma is usually the venue, the rest the street address.
+    const [venue, ...rest] = String(g.location).split(",");
+    const place = `<span class="venue">${esc(venue.trim())}</span>${rest.length ? `<span class="addr">${esc(rest.join(",").trim())}</span>` : ""}`;
+    const loc = hasPin(g) && linkLocation ? `<a href="${gmapsUrl(g)}" target="_blank" rel="noopener">${place}</a>` : place;
+    const cost = String(g.cost_per_player || "").trim();
+    const costTag = cost ? `<span class="tag">${esc(/^\d+([.,]\d{1,2})?$/.test(cost) ? `€${cost} / player` : cost)}</span>` : "";
+    return `<div class="meta"><div class="loc">${PIN}<div>${loc}</div></div>
+      <div class="tags"><span class="tag level-${esc(String(g.level).toLowerCase())}">${esc(g.level)}</span>${costTag}</div>
+      <div class="host">Hosted by <b>${esc(g.host_name)}</b>${g.host_position ? ` · ${esc(g.host_position)}` : ""}</div></div>`;
   }
 
   // ---------- Views ----------
@@ -265,38 +285,82 @@
 
     setView(`
       <section class="hero">
-        <span class="pill-badge">● Pilot · Eindhoven</span>
-        <h1>Short a player?<br><em>Not anymore.</em></h1>
-        <p>Post your game, players nearby request a spot, you pick who joins. Any sport.</p>
-        ${me ? "" : `<p class="hero-small">New here? <a href="#/signup">Create a free account</a> in 30 seconds.</p>`}
-        <div class="btn-row">
-          <a class="btn" href="#games" data-scroll="games">Find a game</a>
-          <a class="btn btn-ghost" href="#/host">Host a game</a>
+        <div class="hero-copy">
+          <span class="pill-badge"><i></i>Live in Eindhoven · Pilot</span>
+          <h1>Never be a player short <em>again.</em></h1>
+          <p>Meet players and join games at your level in your favorite sport.</p>
+          <div class="btn-row">
+            <a class="btn btn-lg" href="#games" data-scroll="games"><span id="hero-find">Find a game</span> <span class="arr">→</span></a>
+            <a class="hero-link" href="#/host">Host a game</a>
+          </div>
+          <ul class="hero-points"><li>Free to use</li><li>Contact details shared only after approval</li></ul>
         </div>
+        <div class="hero-art" id="hero-art"></div>
       </section>
-      <div class="steps">
-        <div class="step"><b>1</b><span>Host posts a game and how many players they need</span></div>
-        <div class="step"><b>2</b><span>Players request a spot</span></div>
-        <div class="step"><b>3</b><span>Host approves, you get each other's contact. Play!</span></div>
-      </div>
+      <div class="stats" id="stats" hidden></div>
       ${mineHtml}
-      <div class="section-head" id="games"><h2>Open games</h2><a href="#/host">+ Host</a></div>
-      <div id="home-map-wrap"></div>
-      <div id="game-list"><div class="loading">Loading games…</div></div>
+      <div class="section-head" id="games"><div><span class="eyebrow">Find your game</span><h2>Open games</h2></div></div>
+      <div class="browse">
+        <div id="home-map-wrap"></div>
+        <div id="game-list"><div class="loading">Loading games…</div></div>
+      </div>
+      <div class="section-head"><div><span class="eyebrow">Three steps</span><h2>How it works</h2></div></div>
+      <div class="steps">
+        <div class="step"><b>01</b><div><strong>Pick a game</strong><span>Browse open games on the map or in the list.</span></div></div>
+        <div class="step"><b>02</b><div><strong>Request a spot</strong><span>The host reviews your request and approves you.</span></div></div>
+        <div class="step"><b>03</b><div><strong>Play</strong><span>You get each other's WhatsApp or email to sort out the details.</span></div></div>
+      </div>
+      <div class="perks">
+        <div class="perk"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v6c0 4.400-3 7.600-7 9-4-1.400-7-4.600-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg><div><strong>Your number stays private</strong><span>Contact details are only swapped once the host approves you.</span></div></div>
+        <div class="perk"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.500"/><path d="M2.500 20c.600-3.400 3.200-5.500 6.500-5.500s5.900 2.100 6.500 5.500"/><path d="M16 4.800a3.500 3.500 0 010 6.400M18 14.800c1.900.700 3.100 2.500 3.500 5.200"/></svg><div><strong>Any sport, any level</strong><span>Every game lists its level, so you know what you're joining.</span></div></div>
+        <div class="perk"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12V4h8l10 10-8 8L3 12z"/><circle cx="7.500" cy="7.500" r="1.500"/></svg><div><strong>Free to use</strong><span>No fees from us. You only pay your share if the host lists a cost.</span></div></div>
+      </div>
+      <section class="host-band">
+        <div><h2>Short a player?</h2><p>Host a game in a minute, share the link in your group chat and pick who joins.</p>
+          <ul class="sports"><li>Football</li><li>Padel</li><li>Basketball</li><li>Volleyball</li><li>Tennis</li></ul></div>
+        <a class="btn btn-lg" href="#/host">Host a game <span class="arr">→</span></a>
+      </section>
     `);
+    app.classList.add("wide");
 
     try {
       const games = await rpc("list_games");
       const list = document.getElementById("game-list");
       if (!list) return;
+      const left = (g) => Math.max(0, g.spots_needed - g.spots_filled);
+      if (games.length) {
+        const n = (count, word) => `<div><b>${count}</b><span>${word}${count === 1 ? "" : "s"}</span></div>`;
+        document.getElementById("hero-find").textContent = `See ${games.length} open game${games.length > 1 ? "s" : ""}`;
+        const stats = document.getElementById("stats");
+        stats.innerHTML = n(games.length, "open game") + n(games.reduce((s, g) => s + left(g), 0), "open spot") + n(new Set(games.map((g) => g.sport)).size, "sport");
+        stats.hidden = false;
+      }
+      const next = games.find((g) => !isPast(g.starts_at) && left(g)) || games[0];
+      document.getElementById("hero-art").innerHTML = next ? `
+        <a class="feature ${sportClass(next.sport)}" href="#/game/${next.id}">
+          <span class="feature-label">Next game</span>
+          <div class="feature-row">${dateTile(next.starts_at)}<div><span class="sport-chip">${esc(next.sport)}</span><div class="when">${fmtWhen(next.starts_at)}</div></div></div>
+          ${gameMeta(next, false)}
+          ${spotsBlock(next)}
+          <span class="feature-cta">Request a spot <span class="arr">→</span></span>
+        </a>` : `
+        <a class="feature sport-bg" href="#/host">
+          <span class="feature-label">No games yet</span>
+          <div class="when" style="margin:12px 0 6px">Be the first to post one</div>
+          <div class="meta"><span>It takes a minute, and your group chat does the rest.</span></div>
+          <span class="feature-cta">Host a game <span class="arr">→</span></span>
+        </a>`;
       list.innerHTML = games.length ? games.map((g) => `
-        <a class="card game-card" href="#/game/${g.id}">
-          <div class="game-top"><span class="sport-chip">${esc(g.sport)}</span>${isPast(g.starts_at) ? `<span class="status pending">Started</span>` : hasPin(g) ? `<span class="hint">🗺️ On map</span>` : ""}</div>
-          <div class="when">${fmtWhen(g.starts_at)}</div>
-          ${gameMeta(g, false)}
-          ${spotsBlock(g)}
+        <a class="card game-card ${sportClass(g.sport)}" href="#/game/${g.id}">
+          ${dateTile(g.starts_at)}
+          <div class="game-body">
+            <div class="game-top"><span class="sport-chip">${esc(g.sport)}</span>${isPast(g.starts_at) ? `<span class="status pending">Started</span>` : `<span class="arr">→</span>`}</div>
+            <div class="when">${fmtWhen(g.starts_at).split(" · ")[1]}</div>
+            ${gameMeta(g, false)}
+            ${spotsBlock(g)}
+          </div>
         </a>`).join("") : `
-        <div class="card empty"><div class="big">⚽</div><h3>No open games yet</h3>
+        <div class="card empty"><h3>No open games yet</h3>
           <p class="muted">Be the first. Post a game and share it in your group chat.</p>
           <a class="btn" href="#/host">Host a game</a></div>`;
       renderHomeMap(games);
@@ -321,6 +385,7 @@
           <input id="sport" name="sport" required maxlength="40" placeholder="e.g. Football" autocomplete="off" value="${esc(me.profile.fav_sport)}" />
           <div class="chips">${["Football", "Padel", "Basketball", "Volleyball", "Tennis"].map((s) => `<button type="button" class="chip" data-sport="${s}">${s}</button>`).join("")}</div>
         </div>
+        <div id="pos-wrap" hidden>${positionField("hpos")}</div>
         <div class="grid-2">
           <div class="field"><label for="when">Date & time</label><input id="when" name="when" type="datetime-local" required value="${defaultWhen}" /></div>
           <div class="field"><label for="spots">Players needed</label><input id="spots" name="spots" type="number" min="1" max="30" value="2" required /></div>
@@ -343,7 +408,10 @@
         <button class="btn btn-block" type="submit">Post game</button>
       </form>`);
 
-    app.querySelectorAll("[data-sport]").forEach((b) => b.addEventListener("click", () => { document.getElementById("sport").value = b.dataset.sport; }));
+    const syncPos = () => { document.getElementById("pos-wrap").hidden = sportKey(document.getElementById("sport").value) !== "football"; };
+    app.querySelectorAll("[data-sport]").forEach((b) => b.addEventListener("click", () => { document.getElementById("sport").value = b.dataset.sport; syncPos(); }));
+    document.getElementById("sport").addEventListener("input", syncPos);
+    syncPos();
 
     // Map picker
     let pin = null, autoName = "";
@@ -416,8 +484,9 @@
           p_sport: v("sport"), p_location: v("location"), p_starts_at: when.toISOString(), p_spots: spots,
           p_level: v("level"), p_cost: v("cost") || null, p_notes: v("notes") || null,
           p_lat: pin ? pin.lat : null, p_lng: pin ? pin.lng : null,
+          p_position: sportKey(v("sport")) === "football" ? document.getElementById("hpos").value : null,
         });
-        track("game_posted", { sport: v("sport"), spots: spots, has_pin: !!pin });
+        track("game_posted", { sport: v("sport"), spots, has_pin: !!pin });
         viewHostCreated(id, { sport: v("sport"), starts_at: when.toISOString(), location: v("location"), spots, lat: pin ? pin.lat : null, lng: pin ? pin.lng : null });
       } catch (e) {
         errBox.innerHTML = `<div class="form-error">${esc(e.message)}</div>`;
@@ -468,6 +537,25 @@
     if (login) login.addEventListener("click", (e) => { e.preventDefault(); requireAccount(`#/game/${g.id}`, "Log in or create an account to request a spot."); });
     const signup = document.getElementById("signup-to-join");
     if (signup) signup.addEventListener("click", () => ss.set(NEXT, `#/game/${g.id}`));
+    const guestStart = document.getElementById("guest-start"), guestForm = document.getElementById("guest-form");
+    if (guestStart) guestStart.addEventListener("click", () => { document.getElementById("join-card").hidden = true; guestForm.hidden = false; document.getElementById("gname").focus(); });
+    if (guestForm) guestForm.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const btn = guestForm.querySelector("[type=submit]"), errBox = document.getElementById("form-error");
+      const name = document.getElementById("gname").value.trim(), phone = document.getElementById("gphone").value.trim();
+      const bad = !name ? "Please enter your name." : !/^\+?[0-9 ()-]+$/.test(phone) || phone.replace(/\D/g, "").length < 9 || phone.replace(/\D/g, "").length > 15 ? "Please enter a valid phone number." : "";
+      if (bad) { errBox.innerHTML = `<div class="form-error">${bad}</div>`; return; }
+      btn.disabled = true; btn.textContent = "Sending…";
+      try {
+        const r = await rpc("guest_request", { p_game: g.id, p_name: name, p_phone: phone, p_level: document.getElementById("plevel").value, p_message: document.getElementById("pmsg").value.trim() || null, p_position: document.getElementById("ppos")?.value || null });
+        track("join_request_sent", { sport: g.sport });
+        addMine("requests", { id: r.id, token: r.token, sport: g.sport, starts_at: g.starts_at });
+        location.hash = `#/request/${r.id}/${r.token}?new=1`;
+      } catch (e) {
+        errBox.innerHTML = `<div class="form-error">${esc(e.message)}</div>`;
+        btn.disabled = false; btn.textContent = "Request spot";
+      }
+    });
     const form = document.getElementById("req-form");
     if (!form) return;
     form.addEventListener("submit", async (ev) => {
@@ -475,7 +563,7 @@
       const btn = form.querySelector("[type=submit]"), errBox = document.getElementById("form-error");
       btn.disabled = true; btn.textContent = "Sending…";
       try {
-        const id = await rpc("join_game", { p_game: g.id, p_level: document.getElementById("plevel").value, p_message: document.getElementById("pmsg").value.trim() || null });
+        const id = await rpc("join_game", { p_game: g.id, p_level: document.getElementById("plevel").value, p_message: document.getElementById("pmsg").value.trim() || null, p_position: document.getElementById("ppos")?.value || null });
         track("join_request_sent", { sport: g.sport });
         location.hash = `#/request/${id}?new=1`;
       } catch (e) {
@@ -489,8 +577,24 @@
     if (g.is_host) return `<div class="card"><h2>This is your game</h2><p class="muted">Approve players and see who's coming on your game page.</p><a class="btn" href="#/manage/${g.id}">Manage game →</a></div>`;
     if (g.my_request_id && ["pending", "approved"].includes(g.my_request_status)) return `<div class="card ${g.my_request_status === "approved" ? "success" : ""}"><h2>${g.my_request_status === "approved" ? "You're in! ✅" : "Request sent"}</h2><p class="muted">${g.my_request_status === "approved" ? "See the host's contact on your request page." : `Waiting for ${esc(g.host_name)} to respond.`}</p><a class="btn" href="#/request/${g.my_request_id}">View my request →</a></div>`;
     if (closed) return `<div class="card empty"><h3>${reason}</h3><a class="btn" href="#/">See other games</a></div>`;
-    if (!me || !me.profile) return `<div class="card"><h2>Request a spot</h2><p class="muted">Create a free account to request a spot. It takes 30 seconds.</p>
-      <div class="btn-row"><a class="btn" id="signup-to-join" href="#/signup">Sign up</a><a class="btn btn-ghost" id="login-to-join" href="#/login">Log in</a></div></div>`;
+    if (!me) return `<div class="card" id="join-card"><h2>Request a spot</h2>
+      <p class="muted">Continue as a guest with just your name and phone number, or use an account to keep all your games in one place.</p>
+      <div class="btn-row"><button class="btn" type="button" id="guest-start">Continue as guest</button><a class="btn btn-ghost" id="signup-to-join" href="#/signup">Sign up</a></div>
+      <p class="hint" style="margin:12px 0 0">Already have an account? <a id="login-to-join" href="#/login">Log in</a></p></div>
+      <form class="card" id="guest-form" hidden novalidate>
+        <h2>Request as a guest</h2>
+        <p class="muted">Your phone number is only shared with ${esc(g.host_name)}, so they can reach you once they approve you.</p>
+        <div id="form-error"></div>
+        <div class="field"><label for="gname">Your name</label><input id="gname" maxlength="60" autocomplete="name" required /></div>
+        <div class="field"><label for="gphone">Phone number <span class="hint">(WhatsApp)</span></label><input id="gphone" type="tel" maxlength="20" autocomplete="tel" placeholder="06 12345678" required /></div>
+        <div class="field"><label for="plevel">Your level in ${esc(g.sport)}</label>
+          <select id="plevel">${["Beginner", "Intermediate", "Advanced"].map((l) => `<option ${l === "Intermediate" ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+        ${sportKey(g.sport) === "football" ? positionField("ppos") : ""}
+        <div class="field"><label for="pmsg">Message to host <span class="hint">(optional)</span></label><textarea id="pmsg" maxlength="300" placeholder="e.g. I usually play as a defender"></textarea></div>
+        <button class="btn btn-block" type="submit">Request spot</button>
+      </form>`;
+    if (!me.profile) return `<div class="card"><h2>Request a spot</h2><p class="muted">Finish your profile to request a spot. It takes 30 seconds.</p>
+      <div class="btn-row"><a class="btn" id="login-to-join" href="#/me">Finish profile</a></div></div>`;
     const sameSport = me.profile.fav_sport.trim().toLowerCase() === String(g.sport).trim().toLowerCase();
     const lvl = sameSport ? me.profile.level : "Intermediate";
     return `<form class="card" id="req-form" novalidate>
@@ -499,6 +603,7 @@
         <div id="form-error"></div>
         <div class="field"><label for="plevel">Your level in ${esc(g.sport)}</label>
           <select id="plevel">${["Beginner", "Intermediate", "Advanced"].map((l) => `<option ${l === lvl ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+        ${sportKey(g.sport) === "football" ? positionField("ppos") : ""}
         <div class="field"><label for="pmsg">Message to host <span class="hint">(optional)</span></label><textarea id="pmsg" maxlength="300" placeholder="e.g. I usually play as a defender"></textarea></div>
         <button class="btn btn-block" type="submit">Request spot</button>
       </form>`;
@@ -524,7 +629,7 @@
       <div class="card ${s.status === "approved" ? "success" : ""}">
         <div class="game-top"><span class="sport-chip">${esc(g.sport)}</span><span class="status ${g.status !== "open" ? "cancelled" : s.status}">${g.status === "removed" ? "Game removed" : g.status === "cancelled" ? "Game cancelled" : s.status}</span></div>
         <div class="when">${fmtWhen(g.starts_at)}</div>
-        <div class="meta"><span>📍 ${hasPin(g) ? `<a href="${gmapsUrl(g)}" target="_blank" rel="noopener">${esc(g.location)}</a>` : esc(g.location)}</span>${g.cost_per_player ? `<span>💶 ${esc(g.cost_per_player)}</span>` : ""}</div>
+        <div class="meta"><span>${hasPin(g) ? `<a href="${gmapsUrl(g)}" target="_blank" rel="noopener">${esc(g.location)}</a>` : esc(g.location)}</span>${g.cost_per_player ? `<span>Cost: ${esc(g.cost_per_player)}</span>` : ""}</div>
         <p>${text}</p>
         ${s.status === "approved" && s.host_contact ? `<p><b>Host contact:</b> ${contactLink(s.host_contact)}</p>` : ""}
       </div>
@@ -561,7 +666,7 @@
 
     const reqHtml = reqs.length ? reqs.map((r) => `
       <div class="req">
-        <div class="req-head"><span class="req-name">${esc(r.player_name)} <span class="hint">· ${esc(r.level)}</span></span><span class="status ${r.status}">${r.status}</span></div>
+        <div class="req-head"><span class="req-name">${esc(r.player_name)} <span class="hint">· ${esc(r.level)}${r.position ? ` · ${esc(r.position)}` : ""}</span></span><span class="status ${r.status}">${r.status}</span></div>
         ${r.status === "approved" ? `<div class="hint" style="margin-top:4px">Contact: ${contactLink(r.player_contact)}</div>` : ""}
         ${r.message ? `<div class="req-msg">${esc(r.message)}</div>` : ""}
         ${!cancelled && !past && r.status === "pending" ? `<div class="btn-row">
@@ -845,7 +950,7 @@
           </div>
           ${g.requests.length ? `<details style="margin-top:10px"><summary>${g.requests.length} request${g.requests.length > 1 ? "s" : ""}</summary>
             ${g.requests.map((r) => `<div class="req">
-              <div class="req-head"><span class="req-name">${esc(r.player_name)} <span class="hint">· ${esc(r.level)} · ${esc(r.player_contact)}</span></span><span class="status ${esc(r.status)}">${esc(r.status)}</span></div>
+              <div class="req-head"><span class="req-name">${esc(r.player_name)} <span class="hint">· ${esc(r.level)}${r.position ? ` · ${esc(r.position)}` : ""} · ${esc(r.player_contact)}</span></span><span class="status ${esc(r.status)}">${esc(r.status)}</span></div>
               ${r.message ? `<div class="req-msg">${esc(r.message)}</div>` : ""}
               ${r.status === "removed"
                 ? `<button class="btn btn-ghost btn-small" data-req="${r.id}" data-remove="false">Restore request</button>`
@@ -880,7 +985,7 @@
     }
     const [path, query] = (location.hash.slice(1) || "/").split("?");
     const parts = path.split("/").filter(Boolean);
-    trackPage(parts[0] === "admin" ? "" : parts[0]);
+    if (parts[0] !== "admin") trackPage(parts[0] || "");
     if (parts[0] === "host") return viewHost();
     if (parts[0] === "signup") return viewSignup();
     if (parts[0] === "login") return viewLogin();
@@ -905,19 +1010,6 @@
     if (event === "PASSWORD_RECOVERY") { loadMe().then(() => { location.hash = "#/reset"; }); return; }
     if (event === "SIGNED_OUT") { me = null; renderNav(); }
   });
-  // Brand: logo in the header + browser/home-screen icons
-  (function brand() {
-    const logo = document.querySelector(".topbar .logo");
-    if (logo) logo.innerHTML = `<img src="assets/logo.png" alt="OneShort" class="logo-img" width="146" height="30" />`;
-    const setLink = (rel, href, sizes) => {
-      let l = document.querySelector(`link[rel="${rel}"]`);
-      if (!l) { l = document.createElement("link"); l.rel = rel; document.head.appendChild(l); }
-      l.href = href; if (sizes) l.sizes = sizes;
-    };
-    setLink("icon", "assets/favicon.png", "64x64");
-    setLink("apple-touch-icon", "assets/apple-touch-icon.png", "180x180");
-    const tc = document.querySelector('meta[name="theme-color"]'); if (tc) tc.content = "#ffffff";
-  })();
   renderNav();
   loading();
   loadMe().finally(route);
