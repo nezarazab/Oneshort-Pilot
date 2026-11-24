@@ -348,3 +348,16 @@ details summary { cursor: pointer; font-weight: 600; color: var(--green); }
 .sport-volleyball { --c: #0d6f6a; --fade: rgba(13,111,106,0); --img: url(assets/sport-volleyball.jpg); }
 .sport-padel { --c: #1c4f8f; --fade: rgba(28,79,143,0); --img: url(assets/sport-padel.jpg); }
 .sport-tennis { --c: #5d7a12; --fade: rgba(93,122,18,0); --img: url(assets/sport-tennis.jpg); }
+
+/* SEO landing pages (/football-eindhoven/, /padel-eindhoven/, /nl/...) */
+/* slightly smaller headline so long Dutch words like "Padelmaatje" fit on a 375px phone */
+.hero-landing h1 { font-size: clamp(2.3rem, 10vw, 5rem); }
+.prose { max-width: 760px; margin-top: 64px; }
+.prose h2 { font-size: clamp(1.6rem, 4vw, 2.2rem); letter-spacing: -0.02em; }
+.prose h3 { font: 800 1.15rem Archivo, Inter, sans-serif; margin: 28px 0 6px; }
+.prose p { margin: 0 0 12px; color: var(--ink-2); font-size: 1.02rem; }
+.see-also { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 32px; }
+.see-also a { padding: 10px 16px; border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--ink); font-weight: 700; text-decoration: none; }
+.see-also a:hover { border-color: var(--green); }
+.footer-links { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 0 0 12px; }
+.footer-links a { color: var(--ink-2); font-size: .85rem; }
